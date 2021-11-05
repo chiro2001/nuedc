@@ -1,15 +1,33 @@
 import cv2
 import numpy as np
 from capture import start_capture, find_cameras
+import time
 
 last_frame = None
+last_time = time.time()
+last_timestamp = None
+fps_time = []
+fps_count = 60
 
 
-def on_frame(frame: np.ndarray, on_quit=None):
-    global last_frame
+def on_frame(frame: np.ndarray, on_quit=None, info=None):
+    global last_frame, last_time, fps_time, last_timestamp
     if last_frame is None:
         last_frame = frame
         return
+    if info is not None:
+        if last_timestamp is None:
+            # last_timestamp = info.nDevTimeStampLow
+            last_timestamp = info.nHostTimeStamp
+        else:
+            # timestamp = info.nDevTimeStampLow
+            # timestamp = info.nHostTimeStamp
+            timestamp = ((info.nHostTimeStamp & 0xFFFFC000) >> 14) * 1000 / (2**13)
+            delta_timestamp = timestamp - last_timestamp
+            last_timestamp = timestamp
+            # print(f"offset: {((timestamp & 0xFFFFC000) >> 14) * 1000 / (2**13)}ms")
+            # print(delta_timestamp)
+            print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
     gray = frame
     diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
                            np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
@@ -63,11 +81,18 @@ def on_frame(frame: np.ndarray, on_quit=None):
     # cv2.imshow("result4", result4)
     # cv2.imshow("result", result)
 
-    width = frame.shape[1] // 5
-    height = frame.shape[0] // 5
+    width = frame.shape[1] // 2
+    height = frame.shape[0] // 2
     resized = cv2.resize(result4, (width, height))
-    # resized = frame
+    # resized = cv2.resize(frame, (width, height))
     cv2.imshow("frame", resized)
+    now = time.time()
+    time_delta = now - last_time
+    print(f"calc done! fps: {(sum(fps_time) / fps_count):2.3f} fps cnt: {int(1 / time_delta)}")
+    fps_time.append(1 / time_delta)
+    if len(fps_time) >= fps_count:
+        fps_time = fps_time[1:]
+    last_time = now
     key = chr(cv2.waitKey(1) & 0xFF)
     if key == 'q' and on_quit is not None:
         on_quit()

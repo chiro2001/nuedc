@@ -23,23 +23,26 @@ def work_thread(cam, pData, nDataSize, on_frame):
     stFrameInfo = MV_FRAME_OUT_INFO_EX()
     memset(byref(stFrameInfo), 0, sizeof(stFrameInfo))
     while True:
-        ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
-        if ret == 0:
-            # print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
-            #     stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
-            frame = np.frombuffer(bytes(pData._obj), dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
-            # print(f"frame: {frame.shape}")
-            # cv2.imshow("frame", frame)
-            # cv2.waitKey(100)
-            # print(help(stFrameInfo))
-            # frame = stFrameInfo.data
+        try:
+            ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
+            if ret == 0:
+                print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
+                    stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
+                frame = np.frombuffer(bytes(pData._obj)[nDataSize - stFrameInfo.nWidth * stFrameInfo.nHeight:], dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
+                # print(f"frame: {frame.shape}")
+                # cv2.imshow("frame", frame)
+                # cv2.waitKey(100)
+                # print(help(stFrameInfo))
+                # frame = stFrameInfo.data
 
-            on_frame(frame, on_quit=on_quit)
-        else:
-            print("no data[0x%x]" % ret)
-            # cv2.destroyWindow("frame")
-        if g_bExit:
-            break
+                on_frame(frame, on_quit=on_quit, info=stFrameInfo)
+            else:
+                print("no data[0x%x]" % ret)
+                # cv2.destroyWindow("frame")
+            if g_bExit:
+                break
+        except Exception as e:
+            print(e)
 
 
 cam = None
