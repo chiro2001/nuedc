@@ -41,7 +41,7 @@ def on_frame(frame: np.ndarray, on_quit=None):
         if len(bounding_rects) == 1:
             outline = bounding_rects[0][1]
     if outline is None:
-        print(f"outline is None!")
+        # print(f"outline is None!")
         return
 
     result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])), 127,
