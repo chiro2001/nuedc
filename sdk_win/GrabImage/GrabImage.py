@@ -1,10 +1,9 @@
 # -- coding: utf-8 --
 
-import cv2
+# import cv2
 import numpy as np
 import sys
 import threading
-import msvcrt
 
 from ctypes import *
 
@@ -24,13 +23,14 @@ def work_thread(cam=0, pData=0, nDataSize=0):
             print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
                 stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
             frame = np.frombuffer(bytes(pData._obj), dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
-            cv2.imshow("frame", frame)
-            cv2.waitKey(100)
+            print(f"frame: {frame.shape}")
+            # cv2.imshow("frame", frame)
+            # cv2.waitKey(100)
             # print(help(stFrameInfo))
             # frame = stFrameInfo.data
         else:
             print("no data[0x%x]" % ret)
-            cv2.destroyWindow("frame")
+            # cv2.destroyWindow("frame")
         if g_bExit == True:
             break
 
@@ -38,7 +38,7 @@ def work_thread(cam=0, pData=0, nDataSize=0):
 if __name__ == "__main__":
 
     deviceList = MV_CC_DEVICE_INFO_LIST()
-    tlayerType = MV_GIGE_DEVICE | MV_USB_DEVICE
+    tlayerType = MV_GIGE_DEVICE
 
     # ch:枚举设备 | en:Enum device
     ret = MvCamera.MV_CC_EnumDevices(tlayerType, deviceList)
@@ -147,7 +147,8 @@ if __name__ == "__main__":
         print("error: unable to start thread")
 
     print("press a key to stop grabbing.")
-    msvcrt.getch()
+    # msvcrt.getch()
+    input("Enter...")
 
     g_bExit = True
     hThreadHandle.join()
