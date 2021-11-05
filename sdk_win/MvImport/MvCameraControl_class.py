@@ -22,7 +22,9 @@ if platform.system() == 'Linux':
         os.environ['MVCAM_COMMON_RUNENV'] = "/opt/MvCamCtrlSDK/lib"
     target_path = os.path.join(os.path.join(os.environ.get('MVCAM_COMMON_RUNENV'), "armhf"), "libMvCameraControl.so")
     print(f"target_path: {target_path}")
-    MvCamCtrldll = CDLL(target_path)
+    # MvCamCtrldll = CDLL(target_path)
+    MvCamCtrldll = cdll.LoadLibrary(target_path)
+    print(MvCamCtrldll.MV_CC_EnumDevices)
 else:
     target_path = os.path.join(os.environ.get('GENICAM_GENTL32_PATH'), "MvCameraControl.dll")
     print(f"target_path: {target_path}")
