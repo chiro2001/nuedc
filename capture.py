@@ -1,94 +1,52 @@
 # -- coding: utf-8 --
 
 import cv2
+import time
 import numpy as np
 import sys
 import threading
 
 from ctypes import *
 
-sys.path.append("../MvImport")
-from MvCameraControl_class import *
+from MvImport.MvCameraControl_class import *
 
 g_bExit = False
 
 
 # 为线程定义一个函数
-def work_thread(cam=0, pData=0, nDataSize=0):
+def work_thread(cam, pData, nDataSize, on_frame):
+    global g_bExit
+
+    def on_quit():
+        g_bExit = True
+
     stFrameInfo = MV_FRAME_OUT_INFO_EX()
     memset(byref(stFrameInfo), 0, sizeof(stFrameInfo))
     while True:
         ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
         if ret == 0:
-            print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
-                stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
+            # print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
+            #     stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
             frame = np.frombuffer(bytes(pData._obj), dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
-            print(f"frame: {frame.shape}")
-            cv2.imshow("frame", frame)
-            cv2.waitKey(100)
+            # print(f"frame: {frame.shape}")
+            # cv2.imshow("frame", frame)
+            # cv2.waitKey(100)
             # print(help(stFrameInfo))
             # frame = stFrameInfo.data
+
+            on_frame(frame, on_quit=on_quit)
         else:
             print("no data[0x%x]" % ret)
-            cv2.destroyWindow("frame")
-        if g_bExit == True:
+            # cv2.destroyWindow("frame")
+        if g_bExit:
             break
 
 
-if __name__ == "__main__":
+cam = None
 
-    deviceList = MV_CC_DEVICE_INFO_LIST()
-    tlayerType = MV_GIGE_DEVICE
 
-    # ch:枚举设备 | en:Enum device
-    ret = MvCamera.MV_CC_EnumDevices(tlayerType, deviceList)
-    if ret != 0:
-        print("enum devices fail! ret[0x%x]" % ret)
-        sys.exit()
-
-    if deviceList.nDeviceNum == 0:
-        print("find no device!")
-        sys.exit()
-
-    print("Find %d devices!" % deviceList.nDeviceNum)
-
-    for i in range(0, deviceList.nDeviceNum):
-        mvcc_dev_info = cast(deviceList.pDeviceInfo[i], POINTER(MV_CC_DEVICE_INFO)).contents
-        if mvcc_dev_info.nTLayerType == MV_GIGE_DEVICE:
-            print("\ngige device: [%d]" % i)
-            strModeName = ""
-            for per in mvcc_dev_info.SpecialInfo.stGigEInfo.chModelName:
-                strModeName = strModeName + chr(per)
-            print("device model name: %s" % strModeName)
-
-            nip1 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24)
-            nip2 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16)
-            nip3 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8)
-            nip4 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff)
-            print("current ip: %d.%d.%d.%d\n" % (nip1, nip2, nip3, nip4))
-        elif mvcc_dev_info.nTLayerType == MV_USB_DEVICE:
-            print("\nu3v device: [%d]" % i)
-            strModeName = ""
-            for per in mvcc_dev_info.SpecialInfo.stUsb3VInfo.chModelName:
-                if per == 0:
-                    break
-                strModeName = strModeName + chr(per)
-            print("device model name: %s" % strModeName)
-
-            strSerialNumber = ""
-            for per in mvcc_dev_info.SpecialInfo.stUsb3VInfo.chSerialNumber:
-                if per == 0:
-                    break
-                strSerialNumber = strSerialNumber + chr(per)
-            print("user serial number: %s" % strSerialNumber)
-
-    # nConnectionNum = input("please input the number of the device to connect:")
-    nConnectionNum = 0
-
-    if int(nConnectionNum) >= deviceList.nDeviceNum:
-        print("intput error!")
-        sys.exit()
-
+def start_capture(deviceList, nConnectionNum, on_frame):
+    global cam
     # ch:创建相机实例 | en:Creat Camera Object
     cam = MvCamera()
 
@@ -141,17 +99,22 @@ if __name__ == "__main__":
     data_buf = (c_ubyte * nPayloadSize)()
 
     try:
-        hThreadHandle = threading.Thread(target=work_thread, args=(cam, byref(data_buf), nPayloadSize))
+        hThreadHandle = threading.Thread(target=work_thread, args=(cam, byref(data_buf), nPayloadSize, on_frame))
         hThreadHandle.start()
     except:
         print("error: unable to start thread")
 
     print("press a key to stop grabbing.")
     # msvcrt.getch()
-    input("Enter...")
+    # input("Enter...")
 
-    g_bExit = True
-    hThreadHandle.join()
+    # g_bExit = True
+    # hThreadHandle.join()
+    while True:
+        if g_bExit:
+            hThreadHandle.join()
+            break
+        time.sleep(0.1)
 
     # ch:停止取流 | en:Stop grab image
     ret = cam.MV_CC_StopGrabbing()
@@ -175,3 +138,63 @@ if __name__ == "__main__":
         sys.exit()
 
     del data_buf
+
+
+def find_cameras():
+    deviceList = MV_CC_DEVICE_INFO_LIST()
+    tlayerType = MV_GIGE_DEVICE
+
+    # ch:枚举设备 | en:Enum device
+    ret = MvCamera.MV_CC_EnumDevices(tlayerType, deviceList)
+    if ret != 0:
+        print("enum devices fail! ret[0x%x]" % ret)
+        sys.exit()
+
+    if deviceList.nDeviceNum == 0:
+        print("find no device!")
+        sys.exit()
+
+    print("Find %d devices!" % deviceList.nDeviceNum)
+
+    for i in range(0, deviceList.nDeviceNum):
+        mvcc_dev_info = cast(deviceList.pDeviceInfo[i], POINTER(MV_CC_DEVICE_INFO)).contents
+        if mvcc_dev_info.nTLayerType == MV_GIGE_DEVICE:
+            print("\ngige device: [%d]" % i)
+            strModeName = ""
+            for per in mvcc_dev_info.SpecialInfo.stGigEInfo.chModelName:
+                strModeName = strModeName + chr(per)
+            print("device model name: %s" % strModeName)
+
+            nip1 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24)
+            nip2 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16)
+            nip3 = ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8)
+            nip4 = (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff)
+            print("current ip: %d.%d.%d.%d\n" % (nip1, nip2, nip3, nip4))
+        elif mvcc_dev_info.nTLayerType == MV_USB_DEVICE:
+            print("\nu3v device: [%d]" % i)
+            strModeName = ""
+            for per in mvcc_dev_info.SpecialInfo.stUsb3VInfo.chModelName:
+                if per == 0:
+                    break
+                strModeName = strModeName + chr(per)
+            print("device model name: %s" % strModeName)
+
+            strSerialNumber = ""
+            for per in mvcc_dev_info.SpecialInfo.stUsb3VInfo.chSerialNumber:
+                if per == 0:
+                    break
+                strSerialNumber = strSerialNumber + chr(per)
+            print("user serial number: %s" % strSerialNumber)
+
+    # nConnectionNum = input("please input the number of the device to connect:")
+    # nConnectionNum = 0
+    #
+    # if int(nConnectionNum) >= deviceList.nDeviceNum:
+    #     print("intput error!")
+    #     sys.exit()
+    return deviceList
+
+
+if __name__ == "__main__":
+    device_list = find_cameras()
+    start_capture(device_list, 0)
