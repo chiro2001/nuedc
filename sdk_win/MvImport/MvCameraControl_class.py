@@ -14,9 +14,11 @@ from PixelType_const import *
 from PixelType_header import *
 
 # os.path.join(os.environ.get('GENICAM_GENTL64_PATH'), "MvCameraControl.dll")
-target_path = os.path.join(os.environ.get('GENICAM_GENTL32_PATH'), "MvCameraControl.dll")
+# target_path = os.path.join(os.environ.get('GENICAM_GENTL32_PATH'), "MvCameraControl.dll")
+target_path = os.path.join(os.environ.get('MVCAM_COMMON_RUNENV'), "armf")
 print(f"target_path: {target_path}")
-MvCamCtrldll = WinDLL(target_path)
+# MvCamCtrldll = WinDLL(target_path)
+MvCamCtrldll = CDLL(target_path)
 # MvCamCtrldll = WinDLL("MvCameraControl.dll")
 
 # 用于回调函数传入相机实例

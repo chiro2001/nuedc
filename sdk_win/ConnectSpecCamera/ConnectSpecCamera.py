@@ -4,7 +4,6 @@ import os
 import time
 import sys
 import threading
-import msvcrt
 
 from ctypes import *
 
@@ -106,7 +105,8 @@ if __name__ == "__main__":
         print("error: unable to start thread")
 
     print("press a key to stop grabbing.")
-    msvcrt.getch()
+    # msvcrt.getch()
+    input("Press...")
 
     g_bExit = True
     hThreadHandle.join()
