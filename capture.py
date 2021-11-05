@@ -5,6 +5,7 @@ import time
 import numpy as np
 import sys
 import threading
+import traceback
 
 from ctypes import *
 
@@ -26,8 +27,8 @@ def work_thread(cam, pData, nDataSize, on_frame):
         try:
             ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
             if ret == 0:
-                print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
-                    stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
+                # print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
+                #     stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
                 frame = np.frombuffer(bytes(pData._obj)[nDataSize - stFrameInfo.nWidth * stFrameInfo.nHeight:], dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
                 # print(f"frame: {frame.shape}")
                 # cv2.imshow("frame", frame)
@@ -42,7 +43,7 @@ def work_thread(cam, pData, nDataSize, on_frame):
             if g_bExit:
                 break
         except Exception as e:
-            print(e)
+            traceback.print_exc()
 
 
 cam = None

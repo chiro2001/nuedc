@@ -9,9 +9,12 @@ last_timestamp = None
 fps_time = []
 fps_count = 60
 
+outline_rounds = []
+outline_count = 2
+
 
 def on_frame(frame: np.ndarray, on_quit=None, info=None):
-    global last_frame, last_time, fps_time, last_timestamp
+    global last_frame, last_time, fps_time, last_timestamp, outline_rounds
     if last_frame is None:
         last_frame = frame
         return
@@ -22,16 +25,16 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None):
         else:
             # timestamp = info.nDevTimeStampLow
             # timestamp = info.nHostTimeStamp
-            timestamp = ((info.nHostTimeStamp & 0xFFFFC000) >> 14) * 1000 / (2**13)
+            timestamp = ((info.nHostTimeStamp & 0xFFFFC000) >> 14) * 1000 / (2 ** 13)
             delta_timestamp = timestamp - last_timestamp
             last_timestamp = timestamp
             # print(f"offset: {((timestamp & 0xFFFFC000) >> 14) * 1000 / (2**13)}ms")
             # print(delta_timestamp)
-            print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
+            # print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
     gray = frame
     diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
                            np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
-    _, threshold = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
+    _, threshold = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     image_open = cv2.morphologyEx(
@@ -52,9 +55,9 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None):
                    min(bounding_rects[0][1][1], bounding_rects[1][1][1]),
                    max(bounding_rects[0][1][2], bounding_rects[1][1][2]),
                    max(bounding_rects[0][1][3], bounding_rects[1][1][3])]
-        for x in bounding_rects[:2]:
-            x, y, w, h = x[1]
-            result4 = cv2.rectangle(result4, (x, y), (x + w, y + h), 127, 5)
+        # for x in bounding_rects[:2]:
+        #     x, y, w, h = x[1]
+        #     result4 = cv2.rectangle(result4, (x, y), (x + w, y + h), 127, 5)
     else:
         if len(bounding_rects) == 1:
             outline = bounding_rects[0][1]
@@ -66,6 +69,19 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None):
                             5)
 
     outline_box = [*outline[0:2], *(np.array(outline[0:2]) + np.array(outline[2:4]))]
+    width_rate = abs(outline_box[3] - outline_box[0]) / frame.shape[1]
+    if width_rate < 0.2:
+        print(f"too thim! {width_rate}")
+        # return
+    else:
+        print(f"width_rate = {width_rate}")
+        outline_rounds.append(outline_box)
+        if len(outline_rounds) >= outline_count:
+            outline_rounds = outline_rounds[1:]
+    outline_rounds_sum = np.zeros(np.array(outline_box).shape)
+    for r in outline_rounds:
+        outline_rounds_sum += np.array(r)
+    outline_box = outline_rounds_sum / len(outline_rounds)
 
     # plot = gray.copy()
     center = tuple(map(int, [(outline_box[0] + outline_box[2]) / 2, (outline_box[1] + outline_box[3]) / 2]))
@@ -88,7 +104,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None):
     cv2.imshow("frame", resized)
     now = time.time()
     time_delta = now - last_time
-    print(f"calc done! fps: {(sum(fps_time) / fps_count):2.3f} fps cnt: {int(1 / time_delta)}")
+    # print(f"calc done! fps: {(sum(fps_time) / fps_count):2.3f} fps cnt: {int(1 / time_delta)}")
     fps_time.append(1 / time_delta)
     if len(fps_time) >= fps_count:
         fps_time = fps_time[1:]

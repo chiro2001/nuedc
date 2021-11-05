@@ -80,11 +80,11 @@ if __name__ == "__main__":
     print ("start export the camera properties to the file")
     print ("wait......")
 
-    #ch:将相机属性导出到文件中 | en:Export the camera properties to the file
-    ret = cam.MV_CC_FeatureSave("FeatureFile.ini")
-    if MV_OK != ret:
-        print ("save feature fail! ret [0x%x]" % ret)
-    print ("finish export the camera properties to the file")
+    # #ch:将相机属性导出到文件中 | en:Export the camera properties to the file
+    # ret = cam.MV_CC_FeatureSave("FeatureFile.ini")
+    # if MV_OK != ret:
+    #     print ("save feature fail! ret [0x%x]" % ret)
+    # print ("finish export the camera properties to the file")
 
     print ("start import the camera properties from the file")
     print ("wait......")
