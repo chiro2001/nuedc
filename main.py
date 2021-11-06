@@ -8,6 +8,7 @@ import time
 from update_config import update_config
 from utils import *
 from calc_time import calc_time
+from calc_range import calc_range, add_frame, set_raw_image
 
 last_frame = None
 last_time = time.time()
@@ -19,10 +20,11 @@ outline_rounds = []
 outline_count = 2
 
 states = {
-    "big": 0,
-    "small": 1,
+    "init": 0,
+    "big": 1,
+    "small": 2
 }
-state = "big"
+state = "init"
 
 
 def state_big(frame: np.ndarray, on_quit=None, info=None):
@@ -44,6 +46,9 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
             # print(delta_timestamp)
             # print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
     gray = frame
+    add_frame(frame)
+    ans_range = calc_range()
+    print(f"ans_range: {ans_range}")
     diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
                            np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
     _, threshold = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)
@@ -163,8 +168,11 @@ switched = False
 
 
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
-    global switched
-    if state == 'big':
+    global switched, state
+    if state == 'init':
+        set_raw_image(frame)
+        state = "big"
+    elif state == 'big':
         if not switched:
             cv2.destroyAllWindows()
             update_config(cam, "big", on_pause)
