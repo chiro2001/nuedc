@@ -205,7 +205,11 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     if state == 'init':
         cv2.destroyAllWindows()
         time.sleep(2)
-        update_config(cam, "big", on_pause)
+        try:
+            update_config(cam, "big", on_pause)
+        except Exception:
+            time.sleep(2)
+            update_config(cam, "big", on_pause)
         time.sleep(1)
         update_buf(cam)
         set_raw_image(frame)
@@ -214,7 +218,11 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         if not switched:
             cv2.destroyAllWindows()
             time.sleep(1)
-            update_config(cam, "big", on_pause)
+            try:
+                update_config(cam, "big", on_pause)
+            except Exception:
+                time.sleep(2)
+                update_config(cam, "big", on_pause)
             update_buf(cam)
             switched = True
         state_big(frame, on_quit, info)
@@ -222,7 +230,11 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         if not switched:
             cv2.destroyAllWindows()
             time.sleep(1)
-            update_config(cam, "small", on_pause)
+            try:
+                update_config(cam, "small", on_pause)
+            except Exception:
+                time.sleep(2)
+                update_config(cam, "small", on_pause)
             update_buf(cam)
             switched = True
         state_small(frame, on_quit, info)
@@ -242,6 +254,7 @@ slave_L_res = None
 slave_L_rank = None
 
 server = None
+
 
 def master_back_thread():
     global slave_L_res, slave_D_res, slave_L_rank
@@ -361,7 +374,15 @@ def main():
                 server.serve_forever()
         else:
             rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
-            server = xmlrpc.client.ServerProxy(rpc_server_url)
+            print(f"wait slave start...")
+            slave_ok = False
+            while not slave_ok:
+                try:
+                    server = xmlrpc.client.ServerProxy(rpc_server_url)
+                except Exception as e:
+                    print(f"{e}")
+                    time.sleep(0.5)
+                slave_ok = True
             print(f"rpc server at: {rpc_server_url}")
             th = threading.Thread(target=master_back_thread, daemon=True)
             th.start()

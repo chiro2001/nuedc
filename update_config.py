@@ -49,6 +49,7 @@ def file_access_thread(cam=0, nMode=0, filename: str = 'UserSet1', dev_filename:
             ret = cam.MV_CC_FeatureLoad(stFileAccess)
             if MV_OK != ret:
                 print("file access write fail ret [0x%x]\n" % ret)
+                raise RuntimeError("Error Write")
         except Exception as e:
             traceback.print_exc()
             print(f"retry...")
@@ -56,6 +57,7 @@ def file_access_thread(cam=0, nMode=0, filename: str = 'UserSet1', dev_filename:
             ret = cam.MV_CC_FeatureLoad(stFileAccess)
             if MV_OK != ret:
                 print("file access write fail ret [0x%x]\n" % ret)
+                raise RuntimeError("Error Write")
 
 
 def update_config(cam, filename: str, on_pause):
