@@ -361,6 +361,7 @@ def master_back_thread():
                     server.remote_set_state("exit")
                 except Exception as e:
                     print(f"set to exit error: {e}")
+            remote_set_state("exit")
             sys.exit(0)
         while True:
             time.sleep(0.3)
