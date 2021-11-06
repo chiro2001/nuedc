@@ -261,8 +261,8 @@ def master_back_thread():
     while server is None:
         time.sleep(0.2)
     while True:
-        timeout_L = 10
-        timeout_D = 10
+        timeout_L = 20
+        timeout_D = 20
         time_L = 0.0
         time_D = 0.0
         time_d = 0.4

@@ -25,7 +25,7 @@ def add_frame(frame):
                                np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
     except Exception as e:
         print(f"add_frame: {e}")
-        init_superposition(frame.shape)
+        set_raw_image(frame)
         diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
                                np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
     superposition = cv2.bitwise_or(superposition, diff)
