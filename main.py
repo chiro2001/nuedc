@@ -245,6 +245,8 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
             update_buf(cam)
             switched = True
         state_small(frame, on_quit, info)
+    elif state == 'exit':
+        sys.exit(0)
 
 
 master = os.environ.get("MASTER", "rpi01")
@@ -354,7 +356,11 @@ def master_back_thread():
             try:
                 server.exit_slave()
             except Exception as e:
-                print(f"{e}")
+                print(f"exit error: {e}")
+                try:
+                    server.remote_set_state("exit")
+                except Exception as e:
+                    print(f"set to exit error: {e}")
             sys.exit(0)
         while True:
             time.sleep(0.3)
