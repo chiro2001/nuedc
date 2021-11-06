@@ -483,6 +483,7 @@ def master_back_thread():
                 theta = np.arctan(D / slave_D)
                 Theta = theta / np.pi / 2 * 360
                 print(f"theta: {theta} ({Theta})")
+            print(f"\n==================== DONE ==================\n")
             result = {
                 'L': float(final_result_L),
                 'theta': float(Theta)
@@ -492,22 +493,19 @@ def master_back_thread():
                     server_display.display_result(result)
                 except Exception as e:
                     print(f"disp result err: {e}")
-            try:
-                # server.exit_slave()
-                raise RuntimeError("dismiss exit...")
-            except Exception as e:
-                print(f"exit error: {e}")
-                try:
-                    # server.remote_set_state("exit")
-                    server.remote_set_state("idle")
-                except Exception as e:
-                    print(f"set to exit error: {e}")
-            # remote_set_state("exit")
-            # sys.exit(0)
+            # try:
+            #     # server.exit_slave()
+            #     raise RuntimeError("dismiss exit...")
+            # except Exception as e:
+            #     print(f"exit error: {e}")
+            #     try:
+            #         # server.remote_set_state("exit")
+            #         server.remote_set_state("idle")
+            #     except Exception as e:
+            #         print(f"set to exit error: {e}")
+
             remote_set_state("idle")
             time.sleep(3)
-            # while True:
-            #     time.sleep(0.3)
 
 
 def parse_b64_img(b64: str):
