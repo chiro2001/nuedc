@@ -95,8 +95,8 @@ def box_frame(frame):
 
     bounding_rects = [(c, cv2.boundingRect(c)) for c in contours]
     list.sort(bounding_rects, key=lambda x: x[1][2] + x[1][3], reverse=True)
-    result4 = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
-    # result4 = cv2.cvtColor(last_frame, cv2.COLOR_GRAY2RGB)
+    # result4 = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    result4 = cv2.cvtColor(last_frame, cv2.COLOR_GRAY2RGB)
     # result4 = cv2.cvtColor(image_open, cv2.COLOR_GRAY2RGB)
     outline = None
     global last_outline
@@ -285,7 +285,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     elif state == "idle":
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
-        boxed = get_enhanced_frame(boxed, alpha=2, beta=0)
+        boxed = get_enhanced_frame(boxed, alpha=4, beta=0)
         cv2.imshow("boxed", boxed)
         cv2.waitKey(1)
         if is_master:
@@ -300,8 +300,8 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                     global g_slave_frame
                     if b64_slave is not None:
                         g_slave_frame = parse_b64_img(b64_slave)
-                    g_slave_frame = get_enhanced_frame(g_slave_frame, alpha=2, beta=0)
-                    server_display.set_display_frame_B(b64_slave)
+                    g_slave_frame = get_enhanced_frame(g_slave_frame, alpha=4, beta=0)
+                    server_display.set_display_frame_B(encode_b64_img(g_slave_frame))
                 except Exception as e:
                     print(f"sending frame err: {e}")
                 time.sleep(0.1)
@@ -490,7 +490,7 @@ def parse_b64_img(b64: str):
         return None
     io_buf = io.BytesIO(base64.b64decode(b64))
     decode_img = cv2.imdecode(np.frombuffer(io_buf.getbuffer(), np.uint8), -1)
-    decode_img = get_expanded_frame(decode_img)
+    # decode_img = get_expanded_frame(decode_img)
     return decode_img
 
 
@@ -556,13 +556,15 @@ def start_rpc_server():
         def set_display_frame_A(b64: str):
             global g_display_A
             print(f"got disp A ({len(b64) if b64 is not None else None})")
-            g_display_A = parse_b64_img(b64)
+            display_A = parse_b64_img(b64)
+            g_display_A = get_expanded_frame(display_A)
 
         @server.register_function
         def set_display_frame_B(b64):
             global g_display_B
             print(f"got disp B ({len(b64) if b64 is not None else None})")
-            g_display_B = parse_b64_img(b64)
+            display_B = parse_b64_img(b64)
+            g_display_B = get_expanded_frame(display_B)
 
         server.serve_forever()
 
