@@ -10,6 +10,11 @@ from utils import *
 from calc_time import calc_time
 from calc_range import calc_range, add_frame, set_raw_image
 
+from xmlrpc.server import SimpleXMLRPCServer
+from xmlrpc.server import SimpleXMLRPCRequestHandler
+
+import xmlrpc.client
+
 last_frame = None
 last_time = time.time()
 last_timestamp = None
@@ -139,6 +144,9 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
 Ls = []
 Ts_offset = 2
 Ls_count = 5
+L_delta = 5.37 / 100
+L_result = None
+L_rank = 0
 
 
 def state_small(frame: np.ndarray, on_quit=None, info=None):
@@ -153,11 +161,13 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             # g = 9.764834804943986
             g = 9.7925
             # print(f"g = {g}")
-            L = ((T / (2 * np.pi)) ** 2) * g
+            L = ((T / (2 * np.pi)) ** 2) * g - L_delta
             print(f"L = {L}")
             Ls.append(L)
             if len(Ls) >= Ls_count:
                 ave = np.sum(np.array(Ls)) / len(Ls)
+                global L_result
+                L_result = ave
                 print(f"ave = {ave}")
                 # state = 'big'
                 # switched = False
@@ -191,8 +201,8 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
 def main():
     hostname = os.popen("hostname").readline()
     camera_target = [
-        '192.168.137.23',
-        '192.168.137.21'
+        '192.168.137.21',
+        '192.168.137.23'
     ]
     camera_id = int(hostname.replace('\n', "")[-1]) - 1
     device_list = find_cameras()
