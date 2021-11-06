@@ -290,7 +290,7 @@ def master_back_thread():
                 break
         time_L = 0.0
         print(f"Waiting L...")
-        while L_result is None:
+        while L_result is None and slave_L_res is None:
             time.sleep(time_d)
             time_L += time_d
             if time_L > timeout_L:
@@ -301,12 +301,20 @@ def master_back_thread():
         global L_rank
         if L_rank is None:
             L_rank = 999
-        if L_rank <= slave_L_rank:
+        final_result_L = None
+        if L_result is not None:
             final_result_L = L_result
             print(f"L: use master")
-        else:
+        elif slave_L_res is not None:
             final_result_L = slave_L_res
             print(f"L: use slave")
+        if final_result_L is None:
+            if L_rank <= slave_L_rank:
+                final_result_L = L_result
+                print(f"L: use master")
+            else:
+                final_result_L = slave_L_res
+                print(f"L: use slave")
         print(f"final_result_L = {final_result_L}")
         server.remote_set_state("big")
         time.sleep(1)
