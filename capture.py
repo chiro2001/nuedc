@@ -10,40 +10,70 @@ import traceback
 from ctypes import *
 
 from MvImport.MvCameraControl_class import *
+from update_config import file_access_thread
 
 g_bExit = False
+g_pause = False
 
 
 # 为线程定义一个函数
 def work_thread(cam, pData, nDataSize, on_frame):
-    global g_bExit
+    global g_bExit, g_pause
 
     def on_quit():
+        global g_bExit
         g_bExit = True
+
+    def on_pause(filename, val=True):
+        # global g_pause
+        # g_pause = True
+        ret = cam.MV_CC_StopGrabbing()
+        if ret != 0:
+            print("stop grabbing fail! ret[0x%x]" % ret)
+            sys.exit()
+        print("stopped")
+        file_access_thread(cam, 1, filename+"_bak")
+        ret = cam.MV_CC_StartGrabbing()
+        if ret != 0:
+            print("start grabbing fail! ret[0x%x]" % ret)
+            sys.exit()
+        print("started")
 
     stFrameInfo = MV_FRAME_OUT_INFO_EX()
     memset(byref(stFrameInfo), 0, sizeof(stFrameInfo))
     while True:
-        try:
-            ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
-            if ret == 0:
-                # print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
-                #     stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
-                frame = np.frombuffer(bytes(pData._obj)[nDataSize - stFrameInfo.nWidth * stFrameInfo.nHeight:], dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
-                # print(f"frame: {frame.shape}")
-                # cv2.imshow("frame", frame)
-                # cv2.waitKey(100)
-                # print(help(stFrameInfo))
-                # frame = stFrameInfo.data
+        if g_pause:
+            time.sleep(0.1)
+        else:
+            try:
+                if g_pause:
+                    # g_pause = None
+                    pass
+                else:
+                    time.sleep(0.1)
+                    on_frame(None, on_quit=on_quit, info=stFrameInfo, cam=cam, on_pause=on_pause)
+                    continue
+                    ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
+                    print(f"caped")
+                    if ret == 0:
+                        # print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
+                        #     stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
+                        frame = np.frombuffer(bytes(pData._obj)[nDataSize - stFrameInfo.nWidth * stFrameInfo.nHeight:],
+                                              dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
+                        # print(f"frame: {frame.shape}")
+                        # cv2.imshow("frame", frame)
+                        # cv2.waitKey(100)
+                        # print(help(stFrameInfo))
+                        # frame = stFrameInfo.data
 
-                on_frame(frame, on_quit=on_quit, info=stFrameInfo)
-            else:
-                print("no data[0x%x]" % ret)
-                # cv2.destroyWindow("frame")
-            if g_bExit:
-                break
-        except Exception as e:
-            traceback.print_exc()
+                        on_frame(frame, on_quit=on_quit, info=stFrameInfo, cam=cam, on_pause=on_pause)
+                    else:
+                        print("no data[0x%x]" % ret)
+                        # cv2.destroyWindow("frame")
+                    if g_bExit:
+                        break
+            except Exception as e:
+                traceback.print_exc()
 
 
 cam = None
