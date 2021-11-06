@@ -82,7 +82,9 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     # result = cv2.drawContours(
     #     result, [x[0] for x in bounding_rects[:2]], -1, 255, 3)
     # result4 = np.zeros(gray.shape, dtype=gray.dtype)
-    result4 = gray.copy()
+
+    # result4 = gray.copy()
+    result4 = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
     outline = None
     if len(bounding_rects) >= 2:
         outline = [min(bounding_rects[0][1][0], bounding_rects[1][1][0]),
@@ -99,8 +101,8 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
         # print(f"outline is None!")
         return
 
-    result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])), 127,
-                            5)
+    result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])),
+                            (0, 0, 255), 5)
 
     outline_box = [*outline[0:2], *(np.array(outline[0:2]) + np.array(outline[2:4]))]
     width_rate = abs(outline_box[3] - outline_box[0]) / frame.shape[1]
@@ -116,6 +118,8 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     outline_rounds_sum = np.zeros(np.array(outline_box).shape)
     for r in outline_rounds:
         outline_rounds_sum += np.array(r)
+    if len(outline_rounds) == 0:
+        return
     outline_box = outline_rounds_sum / len(outline_rounds)
 
     # plot = gray.copy()
@@ -126,7 +130,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     ]
     cv2.circle(result4, center, 5, 255, -1)
     for p in pts:
-        cv2.circle(result4, tuple(map(int, p)), 3, 255, -1)
+        cv2.circle(result4, tuple(map(int, p)), 3, (0, 255, 0), -1)
 
     last_frame = gray.copy()
     # cv2.imshow("result4", result4)
