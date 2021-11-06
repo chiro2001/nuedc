@@ -232,8 +232,9 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         print(f"======= IDLE =======")
         print(f"PLEASE SHAKE IT")
     elif state == "idle":
-        if time.time() > idle_start + idle_time:
+        if time.time() > idle_start + idle_time and is_master:
             state = "small"
+            server.remote_set_state("small")
             print(f"======= L =======")
             print(f"Measuring L...")
     elif state == 'big':
