@@ -228,7 +228,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         state_small(frame, on_quit, info)
 
 
-master = os.environ.get("MASTER", "rpi02")
+master = os.environ.get("MASTER", "rpi01")
 myself = os.popen("hostname").readline().replace("\n", "")
 is_master = master == myself
 if is_master:
@@ -241,9 +241,12 @@ slave_D_res = None
 slave_L_res = None
 slave_L_rank = None
 
+server = None
 
 def master_back_thread():
     global slave_L_res, slave_D_res, slave_L_rank
+    while server is None:
+        time.sleep(0.2)
     while True:
         timeout_L = 10
         timeout_D = 10
@@ -311,6 +314,7 @@ def master_back_thread():
 
 
 def main():
+    global server
     if test_number == 1 or test_number == 2:
         hostname = os.popen("hostname").readline()
         camera_target = [
