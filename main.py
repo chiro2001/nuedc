@@ -1,5 +1,6 @@
 import os
 import cv2
+import threading
 import numpy as np
 from capture import start_capture, find_cameras, update_buf
 from ctypes import *
@@ -58,6 +59,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     print(f"ans_range: {ans_range}")
     global D_res
     D_res = ans_range
+
     try:
         diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
                                np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
@@ -235,6 +237,78 @@ else:
     print(f"Slave running!")
 test_number = int(os.environ.get("TASK", "1"))
 
+slave_D_res = None
+slave_L_res = None
+slave_L_rank = None
+
+
+def master_back_thread():
+    global slave_L_res, slave_D_res, slave_L_rank
+    while True:
+        timeout_L = 10
+        timeout_D = 10
+        time_L = 0.0
+        time_D = 0.0
+        time_d = 0.4
+        print(f"Waiting L slave...")
+        while slave_L_res is None:
+            slave_L_rank = server.get_L_rank()
+            slave_L_res = server.get_L_result()
+            time.sleep(time_d)
+            time_L += time_d
+            if time_L > timeout_L:
+                print(f"WA: slave_L timeout")
+                break
+        time_L = 0.0
+        print(f"Waiting L...")
+        while L_result is None:
+            time.sleep(time_d)
+            time_L += time_d
+            if time_L > timeout_L:
+                print(f"WA: L timeout")
+                break
+        if slave_L_rank is None:
+            slave_L_rank = 999
+        global L_rank
+        if L_rank is None:
+            L_rank = 999
+        if L_rank <= slave_L_rank:
+            final_result_L = L_result
+            print(f"L: use master")
+        else:
+            final_result_L = slave_L_res
+            print(f"L: use slave")
+        print(f"final_result_L = {final_result_L}")
+        server.remote_set_state("big")
+        time.sleep(2)
+        print(f"Waiting D slave...")
+        while slave_D_res is None:
+            slave_D_res = server.get_D_res()
+            time_D += time_d
+            time.sleep(time_d)
+            time_D += time_d
+            if time_D > timeout_D:
+                print(f"WA: D slave timeout")
+                break
+        time_D = 0.0
+        global D_res
+        print(f"Waiting D...")
+        while D_res is None:
+            time_D += time_d
+            time.sleep(time_d)
+            time_D += time_d
+            if time_D > timeout_D:
+                print(f"WA: D timeout")
+                break
+
+        if slave_D_res is not None:
+            slave_D = slave_D_res if slave_D_res != 0 else 1e-9
+            theta = np.arctan(D_res / slave_D)
+            Theta = theta / np.pi / 2 * 360
+            print(f"theta: {theta} ({Theta})")
+        while True:
+            time.sleep(0.3)
+
 
 def main():
     if test_number == 1 or test_number == 2:
@@ -246,7 +320,7 @@ def main():
         camera_id = int(hostname.replace('\n', "")[-1]) - 1
         host_ips = [
             "192.168.137.231",
-            "192.168.137.231",
+            "192.168.137.232",
         ]
         device_list = find_cameras()
         mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
@@ -285,6 +359,8 @@ def main():
             rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
             server = xmlrpc.client.ServerProxy(rpc_server_url)
             print(f"rpc server at: {rpc_server_url}")
+            th = threading.Thread(target=master_back_thread, daemon=True)
+            th.start()
             while True:
                 time.sleep(0.1)
 
