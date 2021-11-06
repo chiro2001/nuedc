@@ -208,9 +208,12 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
 
 switched = False
 
+idle_start = None
+idle_time = 5
+
 
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
-    global switched, state
+    global switched, state, idle_start
     if state == 'init':
         cv2.destroyAllWindows()
         time.sleep(2)
@@ -224,7 +227,15 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         time.sleep(1)
         update_buf(cam)
         set_raw_image(frame)
-        state = "small"
+        state = "idle"
+        idle_start = time.time()
+        print(f"======= IDLE =======")
+        print(f"PLEASE SHAKE IT")
+    elif state == "idle":
+        if time.time() > idle_start + idle_time:
+            state = "small"
+            print(f"======= L =======")
+            print(f"Measuring L...")
     elif state == 'big':
         if not switched:
             cv2.destroyAllWindows()
