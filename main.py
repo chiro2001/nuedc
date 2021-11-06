@@ -26,6 +26,7 @@ outline_rounds = []
 outline_count = 2
 
 D_res = None
+D_res_count = 20
 
 states = {
     "init": 0,
@@ -57,8 +58,11 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     add_frame(frame)
     ans_range = calc_range()
     print(f"ans_range: {ans_range}")
-    global D_res
-    D_res = ans_range
+    global D_res, D_res_count
+    D_res_count -= 1
+    if D_res_count <= 0:
+        D_res = ans_range
+        print(f"D_res: {ans_range}")
 
     try:
         diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
