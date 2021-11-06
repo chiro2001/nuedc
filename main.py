@@ -266,6 +266,13 @@ def master_back_thread():
     global slave_L_res, slave_D_res, slave_L_rank
     while server is None:
         time.sleep(0.2)
+    server_ok = False
+    while not server_ok:
+        try:
+            server.get_L_rank()
+            server_ok = True
+        except ConnectionRefusedError:
+            time.sleep(0.2)
     while True:
         timeout_L = 20
         timeout_D = 20
