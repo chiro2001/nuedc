@@ -23,6 +23,8 @@ def add_frame(frame):
     try:
         diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
                                np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
+        _, threshold = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)
+        diff = threshold
     except Exception as e:
         print(f"add_frame: {e}")
         set_raw_image(frame)
@@ -39,9 +41,9 @@ def calc_range():
     sums /= m
     left = 0
     right = len(sums) - 1
-    while left < len(sums) and sums[left] < 0.5:
+    while left < len(sums) and sums[left] < 0.45:
         left += 1
-    while right >= 0 and sums[right] < 0.5:
+    while right >= 0 and sums[right] < 0.45:
         right -= 1
     ans = right - left
     ans = max(ans, 0)

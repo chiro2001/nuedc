@@ -44,13 +44,29 @@ g_display_A = None
 g_display_B = None
 
 
+def get_enhanced_frame(frame, alpha=1.3, beta=30):
+    return np.uint8(np.clip((alpha * frame + beta), 0, 255))
+
+
 def get_resized_frame(frame):
     if frame is None:
         return None
-    width = frame.shape[1] // 1
-    height = frame.shape[0] // 1
+    width = frame.shape[1] // 5
+    height = frame.shape[0] // 5
     resized = cv2.resize(frame, (width, height))
     return resized
+
+
+def get_expanded_frame(frame):
+    if frame is None:
+        return None
+    width = int(frame.shape[1] * 5)
+    height = int(frame.shape[0] * 5)
+    resized = cv2.resize(frame, (width, height))
+    return resized
+
+
+last_outline = None
 
 
 def box_frame(frame):
@@ -80,21 +96,37 @@ def box_frame(frame):
     bounding_rects = [(c, cv2.boundingRect(c)) for c in contours]
     list.sort(bounding_rects, key=lambda x: x[1][2] + x[1][3], reverse=True)
     result4 = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    # result4 = cv2.cvtColor(last_frame, cv2.COLOR_GRAY2RGB)
+    # result4 = cv2.cvtColor(image_open, cv2.COLOR_GRAY2RGB)
     outline = None
+    global last_outline
     if len(bounding_rects) >= 2:
-        outline = [min(bounding_rects[0][1][0], bounding_rects[1][1][0]),
-                   min(bounding_rects[0][1][1], bounding_rects[1][1][1]),
-                   max(bounding_rects[0][1][2], bounding_rects[1][1][2]),
-                   max(bounding_rects[0][1][3], bounding_rects[1][1][3])]
+        f = [min(bounding_rects[0][1][0], bounding_rects[1][1][0]),
+             min(bounding_rects[0][1][1], bounding_rects[1][1][1])]
+        outline = [*f,
+                   max(bounding_rects[0][1][2] + f[0], bounding_rects[1][1][2] + f[0]),
+                   max(bounding_rects[0][1][3] + f[1], bounding_rects[1][1][3] + f[1])]
+        for b in bounding_rects:
+            outline = [min(outline[0], b[1][0]),
+                       min(outline[1], b[1][1]),
+                       max(outline[2], b[1][2] + b[1][0]),
+                       max(outline[3], b[1][3] + b[1][1])]
     else:
         if len(bounding_rects) == 1:
             outline = bounding_rects[0][1]
     if outline is None:
+        # print(f"outline is None!")
+        # return resized_raw
+        outline = last_outline
+    if outline is None:
         print(f"outline is None!")
         return resized_raw
 
-    result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])),
-                            (0, 0, 255), 5)
+    # result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])),
+    #                         (0, 0, 255), 5)
+
+    last_outline = outline
+    result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[2:4])), (0, 0, 255), 5)
 
     last_frame = frame.copy()
 
@@ -117,7 +149,8 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
             D_res = ans_range
             print(f"D_res: {ans_range}")
     resized = box_frame(frame)
-    cv2.imshow("frame", resized)
+    expanded = get_expanded_frame(resized)
+    cv2.imshow("frame", expanded)
     cv2.setWindowProperty("frame", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     now = time.time()
     time_delta = now - last_time
@@ -194,9 +227,9 @@ th_wait_key = None
 def wait_key(words: str = "Press Key to continue..."):
     global blocked
     blocked = True
-    # input(words)
-    print(f"{words}")
-    time.sleep(1)
+    input(words)
+    # print(f"{words}")
+    # time.sleep(1)
     blocked = False
 
 
@@ -252,6 +285,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     elif state == "idle":
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
+        boxed = get_enhanced_frame(boxed, alpha=2, beta=0)
         cv2.imshow("boxed", boxed)
         cv2.waitKey(1)
         if is_master:
@@ -266,6 +300,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                     global g_slave_frame
                     if b64_slave is not None:
                         g_slave_frame = parse_b64_img(b64_slave)
+                    g_slave_frame = get_enhanced_frame(g_slave_frame, alpha=2, beta=0)
                     server_display.set_display_frame_B(b64_slave)
                 except Exception as e:
                     print(f"sending frame err: {e}")
@@ -455,6 +490,7 @@ def parse_b64_img(b64: str):
         return None
     io_buf = io.BytesIO(base64.b64decode(b64))
     decode_img = cv2.imdecode(np.frombuffer(io_buf.getbuffer(), np.uint8), -1)
+    decode_img = get_expanded_frame(decode_img)
     return decode_img
 
 
@@ -501,18 +537,20 @@ def start_rpc_server():
 
         @server.register_function
         def display_result(text: str):
-            res = json.loads(text)
-            L, theta = res.get("L", 0), res.get("theta", 0)
-            if L is None:
-                L = 0
-            if theta is None:
-                theta = 0
-            res_img = np.zeros((64, 6512, 3), dtype=np.uint8)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(res_img, f"L: {L:.3f}m", (20, 0), font, 3, (0, 255, 255), 15)
-            cv2.putText(res_img, f"theta: {theta:.1f}m", (20, 20), font, 3, (0, 255, 255), 15)
-            cv2.imshow("result", res_img)
-            cv2.waitKey(1)
+            # res = json.loads(text)
+            # L, theta = res.get("L", 0), res.get("theta", 0)
+            # if L is None:
+            #     L = 0
+            # if theta is None:
+            #     theta = 0
+            # res_img = np.zeros((64, 6512, 3), dtype=np.uint8)
+            # font = cv2.FONT_HERSHEY_SIMPLEX
+            # cv2.putText(res_img, f"L: {L:.3f}m", (20, 0), font, 3, (0, 255, 255), 15)
+            # cv2.putText(res_img, f"theta: {theta:.1f}m", (20, 20), font, 3, (0, 255, 255), 15)
+            # cv2.imshow("result", res_img)
+            # cv2.waitKey(1)
+            print(f"\n================ RESULT =================\n")
+            print(f"{text}")
 
         @server.register_function
         def set_display_frame_A(b64: str):
