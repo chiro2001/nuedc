@@ -204,16 +204,16 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     global switched, state
     if state == 'init':
         cv2.destroyAllWindows()
-        time.sleep(0.5)
+        time.sleep(2)
         update_config(cam, "big", on_pause)
-        time.sleep(0.5)
+        time.sleep(1)
         update_buf(cam)
         set_raw_image(frame)
         state = "small"
     elif state == 'big':
         if not switched:
             cv2.destroyAllWindows()
-            time.sleep(0.5)
+            time.sleep(1)
             update_config(cam, "big", on_pause)
             update_buf(cam)
             switched = True
@@ -221,7 +221,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     elif state == 'small':
         if not switched:
             cv2.destroyAllWindows()
-            time.sleep(0.5)
+            time.sleep(1)
             update_config(cam, "small", on_pause)
             update_buf(cam)
             switched = True
@@ -339,7 +339,7 @@ def main():
             print(f"using: cam0{camera_id} {camera_target[camera_id]}")
             start_capture(device_list, 1 - camera_id, on_frame, to_exit=False)
         if not is_master:
-            rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+            rpc_server_url = f"http://{host_ips[camera_id]}:8000"
             print(f"rpc server will run on: {rpc_server_url}")
             with SimpleXMLRPCServer((host_ips[1 - camera_id], 8000),
                                     requestHandler=RequestHandler, allow_none=True) as server:
