@@ -309,7 +309,9 @@ def master_back_thread():
             print(f"L: use slave")
         print(f"final_result_L = {final_result_L}")
         server.remote_set_state("big")
-        time.sleep(2)
+        time.sleep(1)
+        remote_set_state('big')
+        time.sleep(1)
         print(f"Waiting D slave...")
         while slave_D_res is None:
             slave_D_res = server.get_D_res()
@@ -332,9 +334,12 @@ def master_back_thread():
 
         if slave_D_res is not None:
             slave_D = slave_D_res if slave_D_res != 0 else 1e-9
-            theta = np.arctan(D_res / slave_D)
+            D = D_res if D_res is not None else 0
+            theta = np.arctan(D / slave_D)
             Theta = theta / np.pi / 2 * 360
             print(f"theta: {theta} ({Theta})")
+            server.exit_slave()
+            sys.exit(0)
         while True:
             time.sleep(0.3)
 
@@ -383,6 +388,10 @@ def main():
                 @server.register_function
                 def get_D_res():
                     return D_res
+
+                @server.register_function
+                def exit_slave():
+                    sys.exit(0)
 
                 server.serve_forever()
         else:
