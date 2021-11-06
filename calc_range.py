@@ -44,7 +44,8 @@ def calc_range():
     while right >= 0 and sums[right] < 0.5:
         right -= 1
     ans = right - left
+    ans = max(ans, 0)
     # print(f"[{right} - {left} = {ans}]sums: {sums.shape}")
-    cv2.imshow("image", image)
+    cv2.imshow("superposition", image)
     cv2.waitKey(1)
     return ans

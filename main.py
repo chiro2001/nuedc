@@ -11,7 +11,7 @@ from update_config import update_config
 from utils import *
 import io
 from calc_time import calc_time
-from calc_range import calc_range, add_frame, set_raw_image
+from calc_range import calc_range, add_frame, set_raw_image, init_superposition
 
 from xmlrpc.server import SimpleXMLRPCServer
 from xmlrpc.server import SimpleXMLRPCRequestHandler
@@ -56,20 +56,11 @@ def box_frame(frame):
     global last_frame, last_time, fps_time, last_timestamp, outline_rounds
     resized_raw = get_resized_frame(frame)
     if last_frame is None:
-        last_frame = frame
+        last_frame = frame.copy()
+        print("first_frame!")
         return resized_raw
 
-    last_frame = frame.copy()
-
     gray = frame
-    ans_range = calc_range()
-    print(f"ans_range: {ans_range}")
-    global D_res, D_res_count
-    D_res_count -= 1
-    if D_res_count <= 0:
-        D_res = ans_range
-        print(f"D_res: {ans_range}")
-
     try:
         diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
                                np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
@@ -108,39 +99,41 @@ def box_frame(frame):
         if len(bounding_rects) == 1:
             outline = bounding_rects[0][1]
     if outline is None:
-        # print(f"outline is None!")
+        print(f"outline is None!")
         return resized_raw
 
     result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])),
                             (0, 0, 255), 5)
 
-    outline_box = [*outline[0:2], *(np.array(outline[0:2]) + np.array(outline[2:4]))]
-    width_rate = abs(outline_box[3] - outline_box[0]) / frame.shape[1]
-    if width_rate < 0.08:
-        # print(f"too thim! {width_rate}")
-        # return
-        pass
-    else:
-        # print(f"width_rate = {width_rate}")
-        outline_rounds.append(outline_box)
-        if len(outline_rounds) >= outline_count:
-            outline_rounds = outline_rounds[1:]
-    outline_rounds_sum = np.zeros(np.array(outline_box).shape)
-    for r in outline_rounds:
-        outline_rounds_sum += np.array(r)
-    if len(outline_rounds) == 0:
-        return resized_raw
-    outline_box = outline_rounds_sum / len(outline_rounds)
+    # outline_box = [*outline[0:2], *(np.array(outline[0:2]) + np.array(outline[2:4]))]
+    # width_rate = abs(outline_box[3] - outline_box[0]) / frame.shape[1]
+    # if width_rate < 0.08:
+    #     # print(f"too thim! {width_rate}")
+    #     # return
+    #     pass
+    # else:
+    #     # print(f"width_rate = {width_rate}")
+    #     outline_rounds.append(outline_box)
+    #     if len(outline_rounds) >= outline_count:
+    #         outline_rounds = outline_rounds[1:]
+    # outline_rounds_sum = np.zeros(np.array(outline_box).shape)
+    # for r in outline_rounds:
+    #     outline_rounds_sum += np.array(r)
+    # if len(outline_rounds) == 0:
+    #     print("len(outline_rounds) == 0 !!")
+    #     return resized_raw
+    # outline_box = outline_rounds_sum / len(outline_rounds)
 
-    # plot = gray.copy()
-    center = tuple(map(int, [(outline_box[0] + outline_box[2]) / 2, (outline_box[1] + outline_box[3]) / 2]))
-    pts = [
-        ((outline_box[0] + outline_box[2]) / 2, outline_box[1]),
-        ((outline_box[0] + outline_box[2]) / 2, outline_box[3])
-    ]
-    cv2.circle(result4, center, 5, 255, -1)
-    for p in pts:
-        cv2.circle(result4, tuple(map(int, p)), 3, (0, 255, 0), -1)
+    # center = tuple(map(int, [(outline_box[0] + outline_box[2]) / 2, (outline_box[1] + outline_box[3]) / 2]))
+    # pts = [
+    #     ((outline_box[0] + outline_box[2]) / 2, outline_box[1]),
+    #     ((outline_box[0] + outline_box[2]) / 2, outline_box[3])
+    # ]
+    # cv2.circle(result4, center, 5, 255, -1)
+    # for p in pts:
+    #     cv2.circle(result4, tuple(map(int, p)), 3, (0, 255, 0), -1)
+
+    last_frame = frame.copy()
 
     global g_frame
     resized = get_resized_frame(result4)
@@ -151,9 +144,9 @@ def box_frame(frame):
 
 def state_big(frame: np.ndarray, on_quit=None, info=None):
     global last_frame, last_time, fps_time, last_timestamp, outline_rounds
-    if last_frame is None:
-        last_frame = frame
-        return
+    # if last_frame is None:
+    #     last_frame = frame.copy()
+    #     return
     # if info is not None:
     #     if last_timestamp is None:
     #         # last_timestamp = info.nDevTimeStampLow
@@ -167,11 +160,19 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     #         # print(f"offset: {((timestamp & 0xFFFFC000) >> 14) * 1000 / (2**13)}ms")
     #         # print(delta_timestamp)
     #         # print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
-    timestamp = get_timestamp_ms(info)
-    delta_timestamp = timestamp - last_timestamp
-    last_timestamp = timestamp
+    # timestamp = get_timestamp_ms(info)
+    # delta_timestamp = timestamp - last_timestamp
+    # last_timestamp = timestamp
     add_frame(frame)
 
+    ans_range = calc_range()
+    global D_res, D_res_count
+    print(f"ans_range: {ans_range}, D_res_count: {D_res_count}")
+    if ans_range > 0:
+        D_res_count -= 1
+        if D_res_count <= 0:
+            D_res = ans_range
+            print(f"D_res: {ans_range}")
 
     # last_frame = gray.copy()
     # cv2.imshow("result4", result4)
@@ -255,15 +256,15 @@ switched = False
 idle_start = None
 idle_time = 5
 
-idle_wait = False
+blocked = True
 th_wait_key = None
 
 
 def wait_key(words: str = "Press Key to continue..."):
-    global idle_wait
-    idle_wait = True
+    global blocked
+    blocked = True
     input(words)
-    idle_wait = False
+    blocked = False
 
 
 def to_idle_state():
@@ -276,6 +277,8 @@ def to_idle_state():
     Ls_count = 2
     L_result = None
     L_rank = 0
+
+    init_superposition()
 
     state = "idle"
     idle_start = time.time()
@@ -306,11 +309,13 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     elif state == "idle":
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
-        g_frame = boxed.copy()
+        cv2.imshow("boxed", boxed)
+        cv2.waitKey(1)
+        # g_frame = boxed.copy()
         if is_master:
             if server_display:
                 try:
-                    b64 = encode_b64_img(g_frame)
+                    b64 = encode_b64_img(boxed)
                     server_display.set_display_frame_A(b64)
                 except Exception as e:
                     print(f"sending g frame err: {e}")
@@ -322,9 +327,9 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                     server_display.set_display_frame_B(b64_slave)
                 except Exception as e:
                     print(f"sending frame err: {e}")
-                time.sleep(1)
+                time.sleep(0.1)
 
-            if not idle_wait:
+            if not blocked:
                 state = "small"
                 server.remote_set_state("small")
                 print(f"======= L =======")
@@ -440,7 +445,7 @@ def master_back_thread():
         server.remote_set_state("big")
         time.sleep(1)
         remote_set_state('big')
-        time.sleep(1)
+        time.sleep(0.2)
         print(f"Waiting D slave...")
         while slave_D_res is None:
             try:
@@ -541,6 +546,10 @@ def start_rpc_server():
             return b64
 
         @server.register_function
+        def display_result(res: dict):
+            pass
+
+        @server.register_function
         def set_display_frame_A(b64: str):
             global g_display_A
             print(f"got disp A ({len(b64) if b64 is not None else None})")
@@ -628,6 +637,7 @@ def main():
                     server_display.test()
                 except Exception as e:
                     print(f"{e}")
+                    server_display = None
                 if server_display is None:
                     print(f"No C display detected!")
 
