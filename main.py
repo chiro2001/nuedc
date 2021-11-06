@@ -397,88 +397,101 @@ def master_back_thread():
         except ConnectionRefusedError:
             time.sleep(0.2)
     while True:
-        timeout_L = 20
-        timeout_D = 20
-        time_L = 0.0
-        time_D = 0.0
-        time_d = 0.4
-        print(f"Waiting L slave...")
-        while slave_L_res is None:
-            try:
-                slave_L_rank = server.get_L_rank()
-                slave_L_res = server.get_L_result()
-            except Exception as e:
-                print(f"get slave L err: {e}")
-            time.sleep(time_d)
-            time_L += time_d
-            if time_L > timeout_L:
-                print(f"WA: slave_L timeout")
-                break
-        time_L = 0.0
-        print(f"Waiting L...")
-        while L_result is None and slave_L_res is None:
-            time.sleep(time_d)
-            time_L += time_d
-            if time_L > timeout_L:
-                print(f"WA: L timeout")
-                break
-        if slave_L_rank is None:
-            slave_L_rank = 999
-        global L_rank
-        if L_rank is None:
-            L_rank = 999
-        final_result_L = None
-        if L_result is not None:
-            final_result_L = L_result
-            print(f"L: use master")
-        elif slave_L_res is not None:
-            final_result_L = slave_L_res
-            print(f"L: use slave")
-        if final_result_L is None:
-            if L_rank <= slave_L_rank:
+        if state == 'idle':
+            time.sleep(0.1)
+        elif state == 'small' or state == 'big':
+            timeout_L = 20
+            timeout_D = 20
+            time_L = 0.0
+            time_D = 0.0
+            time_d = 0.4
+            print(f"Waiting L slave...")
+            while slave_L_res is None:
+                try:
+                    slave_L_rank = server.get_L_rank()
+                    slave_L_res = server.get_L_result()
+                except Exception as e:
+                    print(f"get slave L err: {e}")
+                time.sleep(time_d)
+                time_L += time_d
+                if time_L > timeout_L:
+                    print(f"WA: slave_L timeout")
+                    break
+            time_L = 0.0
+            print(f"Waiting L...")
+            while L_result is None and slave_L_res is None:
+                time.sleep(time_d)
+                time_L += time_d
+                if time_L > timeout_L:
+                    print(f"WA: L timeout")
+                    break
+            if slave_L_rank is None:
+                slave_L_rank = 999
+            global L_rank
+            if L_rank is None:
+                L_rank = 999
+            final_result_L = None
+            if L_result is not None:
                 final_result_L = L_result
                 print(f"L: use master")
-            else:
+            elif slave_L_res is not None:
                 final_result_L = slave_L_res
                 print(f"L: use slave")
-        print(f"final_result_L = {final_result_L}")
-        server.remote_set_state("big")
-        time.sleep(1)
-        remote_set_state('big')
-        time.sleep(0.2)
-        print(f"Waiting D slave...")
-        while slave_D_res is None:
-            try:
-                slave_D_res = server.get_D_res()
-            except Exception as e:
-                print(f"get slave D err: {e}")
-            time_D += time_d
-            time.sleep(time_d)
-            time_D += time_d
-            if time_D > timeout_D:
-                print(f"WA: D slave timeout")
-                break
-        time_D = 0.0
-        global D_res
-        print(f"Waiting D...")
-        while D_res is None:
-            time_D += time_d
-            time.sleep(time_d)
-            time_D += time_d
-            if time_D > timeout_D:
-                print(f"WA: D timeout")
-                break
+            if final_result_L is None:
+                if L_rank <= slave_L_rank:
+                    final_result_L = L_result
+                    print(f"L: use master")
+                else:
+                    final_result_L = slave_L_res
+                    print(f"L: use slave")
+            print(f"final_result_L = {final_result_L}")
+            server.remote_set_state("big")
+            time.sleep(1)
+            remote_set_state('big')
+            time.sleep(0.2)
+            print(f"Waiting D slave...")
+            while slave_D_res is None:
+                try:
+                    slave_D_res = server.get_D_res()
+                except Exception as e:
+                    print(f"get slave D err: {e}")
+                time_D += time_d
+                time.sleep(time_d)
+                time_D += time_d
+                if time_D > timeout_D:
+                    print(f"WA: D slave timeout")
+                    break
+            time_D = 0.0
+            global D_res
+            print(f"Waiting D...")
+            while D_res is None:
+                time_D += time_d
+                time.sleep(time_d)
+                time_D += time_d
+                if time_D > timeout_D:
+                    print(f"WA: D timeout")
+                    break
 
-        if slave_D_res is not None:
-            slave_D = slave_D_res if slave_D_res != 0 else 1e-9
-            D = D_res if D_res is not None else 0
-            if D > 40:
-                D = abs(D - D_delta)
-            if slave_D > 40:
-                slave_D = abs(slave_D - D_delta)
-            theta = np.arctan(D / slave_D)
-            Theta = theta / np.pi / 2 * 360
-            print(f"theta: {theta} ({Theta})")
+            Theta = None
+            if slave_D_res is not None:
+                slave_D = slave_D_res if slave_D_res != 0 else 1e-9
+                D = D_res if D_res is not None else 0
+                if D > 40:
+                    D = abs(D - D_delta)
+                if slave_D > 40:
+                    slave_D = abs(slave_D - D_delta)
+                theta = np.arctan(D / slave_D)
+                Theta = theta / np.pi / 2 * 360
+                print(f"theta: {theta} ({Theta})")
+            result = {
+                'L': float(final_result_L),
+                'theta': float(Theta)
+            }
+            if server_display is not None:
+                try:
+                    server_display.display_result(result)
+                except Exception as e:
+                    print(f"disp result err: {e}")
             try:
                 # server.exit_slave()
                 raise RuntimeError("dismiss exit...")
@@ -492,8 +505,9 @@ def master_back_thread():
             # remote_set_state("exit")
             # sys.exit(0)
             remote_set_state("idle")
-        while True:
-            time.sleep(0.3)
+            time.sleep(3)
+            # while True:
+            #     time.sleep(0.3)
 
 
 def parse_b64_img(b64: str):
@@ -547,7 +561,13 @@ def start_rpc_server():
 
         @server.register_function
         def display_result(res: dict):
-            pass
+            L, theta = res.get("L", None), res.get("theta", None)
+            res_img = np.zeros((512, 64, 3), dtype=np.uint8)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(res_img, f"L: {L:.3f}m", (20, 0), font, 3, (0, 255, 255), 15)
+            cv2.putText(res_img, f"theta: {theta:.1f}m", (20, 20), font, 3, (0, 255, 255), 15)
+            cv2.imshow("result", res_img)
+            cv2.waitKey(1)
 
         @server.register_function
         def set_display_frame_A(b64: str):
