@@ -3,6 +3,8 @@
 import time
 import sys
 import threading
+import cv2
+import numpy as np
 
 from ctypes import *
 
@@ -26,22 +28,23 @@ def progress_thread(cam=0, nMode=0):
 
 
 # 为FileAccessThread线程定义一个函数
-def file_access_thread(cam=0, nMode=0, filename: str = 'UserSet1'):
+def file_access_thread(cam=0, nMode=0, filename: str = 'UserSet1', dev_filename: str = 'UserSet1'):
     if cam is None:
         return
-    stFileAccess = MV_CC_FILE_ACCESS()
-    memset(byref(stFileAccess), 0, sizeof(stFileAccess))
-    # print(os.listdir('.'))
-    stFileAccess.pUserFileName = (f'{filename}.bin').encode('ascii')
-    stFileAccess.pDevFileName = filename.encode('ascii')
+    stFileAccess = f'{filename}.ini'
+    # stFileAccess = MV_CC_FILE_ACCESS()
+    # memset(byref(stFileAccess), 0, sizeof(stFileAccess))
+    # # print(os.listdir('.'))
+    # stFileAccess.pUserFileName = (f'{filename}.ini').encode('ascii')
+    # stFileAccess.pDevFileName = dev_filename.encode('ascii')
     if 1 == nMode:
         # ch:读模式 |en:Read mode
-        ret = cam.MV_CC_FileAccessRead(stFileAccess)
+        ret = cam.MV_CC_FeatureSave(stFileAccess)
         if MV_OK != ret:
             print("file access read fail ret [0x%x]\n" % ret)
     elif 2 == nMode:
         # ch:写模式 |en:Write mode
-        ret = cam.MV_CC_FileAccessWrite(stFileAccess)
+        ret = cam.MV_CC_FeatureLoad(stFileAccess)
         if MV_OK != ret:
             print("file access write fail ret [0x%x]\n" % ret)
 
@@ -56,6 +59,7 @@ def update_config(cam, filename: str, on_pause):
     # on_pause(True)
     #
     # on_pause(False)
+
     on_pause(filename)
 
 
@@ -128,6 +132,18 @@ def test_it():
         print("open device fail! ret[0x%x]" % ret)
         sys.exit()
 
+    nPacketSize = cam.MV_CC_GetOptimalPacketSize()
+    if int(nPacketSize) > 0:
+        ret = cam.MV_CC_SetIntValue("GevSCPSPacketSize", nPacketSize)
+        if ret != 0:
+            print("Warning: Set Packet Size fail! ret[0x%x]" % ret)
+
+    # ch:设置触发模式为off | en:Set trigger mode as off
+    ret = cam.MV_CC_SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF)
+    if ret != 0:
+        print("set trigger mode fail! ret[0x%x]" % ret)
+        sys.exit()
+
     # ch:获取数据包大小 | en:Get payload size
     stParam = MVCC_INTVALUE()
     memset(byref(stParam), 0, sizeof(MVCC_INTVALUE))
@@ -147,8 +163,12 @@ def test_it():
     memset(byref(stFrameInfo), 0, sizeof(stFrameInfo))
     data_buf = (c_ubyte * nPayloadSize)()
     pData = byref(data_buf)
-    for i in range(100):
-        cam.MV_CC_GetOneFrameTimeout(pData, nPayloadSize, stFrameInfo, 1000)
+    # for i in range(100):
+    #     cam.MV_CC_GetOneFrameTimeout(pData, nPayloadSize, stFrameInfo, 1000)
+    #     frame = np.frombuffer(bytes(pData._obj)[nPayloadSize - stFrameInfo.nWidth * stFrameInfo.nHeight:],
+    #                           dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
+    #     cv2.imshow("frame", frame)
+    #     cv2.waitKey(1)
 
     # ch:停止取流 | en:Stop grab image
     ret = cam.MV_CC_StopGrabbing()
@@ -156,40 +176,40 @@ def test_it():
         print("stop grabbing fail! ret[0x%x]" % ret)
         del data_buf
         sys.exit()
-    # ch:读模式 |en:Read mode
-    print("read to file.")
-    print('press a key to start.')
-    # input("getch")
-    input("")
-
-    try:
-        hReadThreadHandle = threading.Thread(target=file_access_thread, args=(cam, 1))
-        hReadThreadHandle.start()
-        time.sleep(0.005)
-        hProgress1ThreadHandle = threading.Thread(target=progress_thread, args=(cam, 1))
-        hProgress1ThreadHandle.start()
-    except:
-        print("error: unable to start thread")
-
-    print("waiting.")
-    # input("getch")
-    input("")
-
-    hReadThreadHandle.join()
-    hProgress1ThreadHandle.join()
+    # # ch:读模式 |en:Read mode
+    # print("read to file.")
+    # print('press a key to start.')
+    # # input("getch")
+    # input("")
+    #
+    # try:
+    #     hReadThreadHandle = threading.Thread(target=file_access_thread, args=(cam, 1, "small"))
+    #     hReadThreadHandle.start()
+    #     # time.sleep(0.005)
+    #     # hProgress1ThreadHandle = threading.Thread(target=progress_thread, args=(cam, 1))
+    #     # hProgress1ThreadHandle.start()
+    # except:
+    #     print("error: unable to start thread")
+    #
+    # print("waiting.")
+    # # input("getch")
+    # input("")
+    #
+    # hReadThreadHandle.join()
+    # # hProgress1ThreadHandle.join()
 
     # ch:写模式 |en:Write mode
     print("write from file.")
     print('press a key to start.')
     # input("getch")
-    input("")
+    # input("")
 
     try:
-        hWriteThreadHandle = threading.Thread(target=file_access_thread, args=(cam, 2))
+        hWriteThreadHandle = threading.Thread(target=file_access_thread, args=(cam, 2, 'big'))
         hWriteThreadHandle.start()
-        time.sleep(0.005)
-        hProgress2ThreadHandle = threading.Thread(target=progress_thread, args=(cam, 2))
-        hProgress2ThreadHandle.start()
+        # time.sleep(0.005)
+        # hProgress2ThreadHandle = threading.Thread(target=progress_thread, args=(cam, 2))
+        # hProgress2ThreadHandle.start()
     except:
         print("error: unable to start thread")
 
@@ -197,7 +217,7 @@ def test_it():
     input("getch")
 
     hWriteThreadHandle.join()
-    hProgress2ThreadHandle.join()
+    # hProgress2ThreadHandle.join()
 
     # ch:关闭设备 | Close device
     ret = cam.MV_CC_CloseDevice()

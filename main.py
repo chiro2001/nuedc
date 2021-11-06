@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-from capture import start_capture, find_cameras
+from capture import start_capture, find_cameras, update_buf
 from ctypes import *
 from MvImport.MvCameraControl_class import *
 import time
@@ -22,7 +22,7 @@ states = {
     "big": 0,
     "small": 1,
 }
-state = "small"
+state = "big"
 
 
 def state_big(frame: np.ndarray, on_quit=None, info=None):
@@ -133,11 +133,11 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
 
 Ls = []
 Ts_offset = 2
-Ls_count = 4
+Ls_count = 1
 
 
 def state_small(frame: np.ndarray, on_quit=None, info=None):
-    global Ts_offset, Ls
+    global Ts_offset, Ls, switched, state
     res = calc_time(frame, info)
     if res is not None:
         if Ts_offset > 0:
@@ -154,25 +154,37 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             if len(Ls) >= Ls_count:
                 ave = np.sum(np.array(Ls)) / len(Ls)
                 print(f"ave = {ave}")
+                state = 'big'
+                switched = False
                 Ls = Ls[1:]
 
 
+switched = False
+
+
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
+    global switched
     if state == 'big':
-        cv2.destroyAllWindows()
-        update_config(cam, "big", on_pause)
+        if not switched:
+            cv2.destroyAllWindows()
+            update_config(cam, "big", on_pause)
+            update_buf(cam)
+            switched = True
         state_big(frame, on_quit, info)
     elif state == 'small':
-        cv2.destroyAllWindows()
-        update_config(cam, "small", on_pause)
+        if not switched:
+            cv2.destroyAllWindows()
+            update_config(cam, "small", on_pause)
+            update_buf(cam)
+            switched = True
         state_small(frame, on_quit, info)
 
 
 def main():
     hostname = os.popen("hostname").readline()
     camera_target = [
-        '192.168.137.21',
-        '192.168.137.23'
+        '192.168.137.23',
+        '192.168.137.21'
     ]
     camera_id = int(hostname.replace('\n', "")[-1]) - 1
     device_list = find_cameras()

@@ -38,10 +38,10 @@ def calc_time(frame: np.ndarray, info):
     size = (frame.shape[1], frame.shape[0])
     crop = frame[((size[1] - target_size[1]) // 2):(((size[1] - target_size[1]) // 2) + target_size[1]),
            ((size[0] - target_size[0]) // 2):(((size[0] - target_size[0]) // 2) + target_size[0])]
-    left = frame[0:(size[1] // 2), :]
-    right = frame[(size[1] // 2):size[1], :]
-    # cv2.imshow("small", crop)
-    # cv2.waitKey(1)
+    # left = frame[0:(size[1] // 2), :]
+    # right = frame[(size[1] // 2):size[1], :]
+    cv2.imshow("small", frame)
+    cv2.waitKey(1)
 
     global brightness_count, state, g_brightness, brightness_last, time_delta, timestamp_start
     # if state == 'calc_brightness':

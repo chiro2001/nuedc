@@ -15,6 +15,8 @@ from update_config import file_access_thread
 g_bExit = False
 g_pause = False
 
+g_data_size = None
+
 
 # 为线程定义一个函数
 def work_thread(cam, pData, nDataSize, on_frame):
@@ -31,13 +33,16 @@ def work_thread(cam, pData, nDataSize, on_frame):
         if ret != 0:
             print("stop grabbing fail! ret[0x%x]" % ret)
             sys.exit()
-        print("stopped")
-        file_access_thread(cam, 1, filename+"_bak")
+        # print("stopped")
+        # time.sleep(1)
+        print(f"change settings to: {filename}.ini")
+        file_access_thread(cam, 2, filename)
+        # time.sleep(1)
         ret = cam.MV_CC_StartGrabbing()
         if ret != 0:
             print("start grabbing fail! ret[0x%x]" % ret)
             sys.exit()
-        print("started")
+        # print("started")
 
     stFrameInfo = MV_FRAME_OUT_INFO_EX()
     memset(byref(stFrameInfo), 0, sizeof(stFrameInfo))
@@ -50,19 +55,22 @@ def work_thread(cam, pData, nDataSize, on_frame):
                     # g_pause = None
                     pass
                 else:
-                    time.sleep(0.1)
-                    on_frame(None, on_quit=on_quit, info=stFrameInfo, cam=cam, on_pause=on_pause)
-                    continue
+                    # time.sleep(0.1)
+                    # on_frame(None, on_quit=on_quit, info=stFrameInfo, cam=cam, on_pause=on_pause)
+                    # continue
+                    # if pData is None:
+                    pData = byref(data_buf)
+                    nDataSize = g_data_size
                     ret = cam.MV_CC_GetOneFrameTimeout(pData, nDataSize, stFrameInfo, 1000)
-                    print(f"caped")
                     if ret == 0:
                         # print("get one frame: Width[%d], Height[%d], nFrameNum[%d]" % (
                         #     stFrameInfo.nWidth, stFrameInfo.nHeight, stFrameInfo.nFrameNum))
                         frame = np.frombuffer(bytes(pData._obj)[nDataSize - stFrameInfo.nWidth * stFrameInfo.nHeight:],
                                               dtype=np.uint8).reshape((stFrameInfo.nHeight, stFrameInfo.nWidth))
+                        # print(f"caped")
                         # print(f"frame: {frame.shape}")
                         # cv2.imshow("frame", frame)
-                        # cv2.waitKey(100)
+                        # cv2.waitKey(1)
                         # print(help(stFrameInfo))
                         # frame = stFrameInfo.data
 
@@ -76,11 +84,30 @@ def work_thread(cam, pData, nDataSize, on_frame):
                 traceback.print_exc()
 
 
-cam = None
+# cam = None
+data_buf = None
+
+
+def update_buf(cam):
+    global data_buf, g_data_size
+    if data_buf is not None:
+        del data_buf
+        data_buf = None
+    # ch:获取数据包大小 | en:Get payload size
+    stParam = MVCC_INTVALUE()
+    memset(byref(stParam), 0, sizeof(MVCC_INTVALUE))
+
+    ret = cam.MV_CC_GetIntValue("PayloadSize", stParam)
+    if ret != 0:
+        print("get payload size fail! ret[0x%x]" % ret)
+        sys.exit()
+    nPayloadSize = stParam.nCurValue
+    g_data_size = nPayloadSize
+    data_buf = (c_ubyte * nPayloadSize)()
 
 
 def start_capture(deviceList, nConnectionNum, on_frame):
-    global cam
+    # global cam
     # ch:创建相机实例 | en:Creat Camera Object
     cam = MvCamera()
 
@@ -114,15 +141,7 @@ def start_capture(deviceList, nConnectionNum, on_frame):
         print("set trigger mode fail! ret[0x%x]" % ret)
         sys.exit()
 
-    # ch:获取数据包大小 | en:Get payload size
-    stParam = MVCC_INTVALUE()
-    memset(byref(stParam), 0, sizeof(MVCC_INTVALUE))
-
-    ret = cam.MV_CC_GetIntValue("PayloadSize", stParam)
-    if ret != 0:
-        print("get payload size fail! ret[0x%x]" % ret)
-        sys.exit()
-    nPayloadSize = stParam.nCurValue
+    update_buf(cam)
 
     # ch:开始取流 | en:Start grab image
     ret = cam.MV_CC_StartGrabbing()
@@ -130,10 +149,8 @@ def start_capture(deviceList, nConnectionNum, on_frame):
         print("start grabbing fail! ret[0x%x]" % ret)
         sys.exit()
 
-    data_buf = (c_ubyte * nPayloadSize)()
-
     try:
-        hThreadHandle = threading.Thread(target=work_thread, args=(cam, byref(data_buf), nPayloadSize, on_frame))
+        hThreadHandle = threading.Thread(target=work_thread, args=(cam, None, g_data_size, on_frame))
         hThreadHandle.start()
     except:
         print("error: unable to start thread")
