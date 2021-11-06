@@ -138,7 +138,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
 
 Ls = []
 Ts_offset = 2
-Ls_count = 1
+Ls_count = 5
 
 
 def state_small(frame: np.ndarray, on_quit=None, info=None):
@@ -159,8 +159,8 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             if len(Ls) >= Ls_count:
                 ave = np.sum(np.array(Ls)) / len(Ls)
                 print(f"ave = {ave}")
-                state = 'big'
-                switched = False
+                # state = 'big'
+                # switched = False
                 Ls = Ls[1:]
 
 
@@ -171,7 +171,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     global switched, state
     if state == 'init':
         set_raw_image(frame)
-        state = "big"
+        state = "small"
     elif state == 'big':
         if not switched:
             cv2.destroyAllWindows()

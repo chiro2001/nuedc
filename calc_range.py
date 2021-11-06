@@ -5,9 +5,11 @@ raw_image = None
 superposition = None
 
 
-def init_superposition():
+def init_superposition(shape=None):
     global superposition
-    superposition = np.zeros(raw_image.shape, dtype=raw_image.dtype)
+    if shape is None:
+        shape = raw_image.shape
+    superposition = np.zeros(shape, dtype=raw_image.dtype)
 
 
 def set_raw_image(frame):
@@ -18,8 +20,13 @@ def set_raw_image(frame):
 
 def add_frame(frame):
     global superposition
-    diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
-                           np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
+    try:
+        diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
+                               np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
+    except ValueError:
+        init_superposition(frame.shape)
+        diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
+                               np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
     superposition = cv2.bitwise_or(superposition, diff)
 
 
