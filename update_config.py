@@ -5,6 +5,7 @@ import sys
 import threading
 import cv2
 import numpy as np
+import traceback
 
 from ctypes import *
 
@@ -44,9 +45,17 @@ def file_access_thread(cam=0, nMode=0, filename: str = 'UserSet1', dev_filename:
             print("file access read fail ret [0x%x]\n" % ret)
     elif 2 == nMode:
         # ch:写模式 |en:Write mode
-        ret = cam.MV_CC_FeatureLoad(stFileAccess)
-        if MV_OK != ret:
-            print("file access write fail ret [0x%x]\n" % ret)
+        try:
+            ret = cam.MV_CC_FeatureLoad(stFileAccess)
+            if MV_OK != ret:
+                print("file access write fail ret [0x%x]\n" % ret)
+        except Exception as e:
+            traceback.print_exc()
+            print(f"retry...")
+            time.sleep(2)
+            ret = cam.MV_CC_FeatureLoad(stFileAccess)
+            if MV_OK != ret:
+                print("file access write fail ret [0x%x]\n" % ret)
 
 
 def update_config(cam, filename: str, on_pause):

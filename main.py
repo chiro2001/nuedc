@@ -341,7 +341,7 @@ def main():
         if not is_master:
             rpc_server_url = f"http://{host_ips[camera_id]}:8000"
             print(f"rpc server will run on: {rpc_server_url}")
-            with SimpleXMLRPCServer((host_ips[1 - camera_id], 8000),
+            with SimpleXMLRPCServer(("0.0.0.0", 8000),
                                     requestHandler=RequestHandler, allow_none=True) as server:
                 server.register_introspection_functions()
                 server.register_function(remote_set_state)
