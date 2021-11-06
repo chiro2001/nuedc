@@ -1,5 +1,6 @@
 import os
 import cv2
+import json
 import threading
 import base64
 import numpy as np
@@ -71,7 +72,6 @@ def box_frame(frame):
                                np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
     _, threshold = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     image_open = cv2.morphologyEx(
         threshold, cv2.MORPH_OPEN, kernel=kernel_open)
     contours, hierarchy = cv2.findContours(
@@ -79,12 +79,6 @@ def box_frame(frame):
 
     bounding_rects = [(c, cv2.boundingRect(c)) for c in contours]
     list.sort(bounding_rects, key=lambda x: x[1][2] + x[1][3], reverse=True)
-    # result = np.zeros(gray.shape, dtype=gray.dtype)
-    # result = cv2.drawContours(
-    #     result, [x[0] for x in bounding_rects[:2]], -1, 255, 3)
-    # result4 = np.zeros(gray.shape, dtype=gray.dtype)
-
-    # result4 = gray.copy()
     result4 = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
     outline = None
     if len(bounding_rects) >= 2:
@@ -92,9 +86,6 @@ def box_frame(frame):
                    min(bounding_rects[0][1][1], bounding_rects[1][1][1]),
                    max(bounding_rects[0][1][2], bounding_rects[1][1][2]),
                    max(bounding_rects[0][1][3], bounding_rects[1][1][3])]
-        # for x in bounding_rects[:2]:
-        #     x, y, w, h = x[1]
-        #     result4 = cv2.rectangle(result4, (x, y), (x + w, y + h), 127, 5)
     else:
         if len(bounding_rects) == 1:
             outline = bounding_rects[0][1]
@@ -104,34 +95,6 @@ def box_frame(frame):
 
     result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])),
                             (0, 0, 255), 5)
-
-    # outline_box = [*outline[0:2], *(np.array(outline[0:2]) + np.array(outline[2:4]))]
-    # width_rate = abs(outline_box[3] - outline_box[0]) / frame.shape[1]
-    # if width_rate < 0.08:
-    #     # print(f"too thim! {width_rate}")
-    #     # return
-    #     pass
-    # else:
-    #     # print(f"width_rate = {width_rate}")
-    #     outline_rounds.append(outline_box)
-    #     if len(outline_rounds) >= outline_count:
-    #         outline_rounds = outline_rounds[1:]
-    # outline_rounds_sum = np.zeros(np.array(outline_box).shape)
-    # for r in outline_rounds:
-    #     outline_rounds_sum += np.array(r)
-    # if len(outline_rounds) == 0:
-    #     print("len(outline_rounds) == 0 !!")
-    #     return resized_raw
-    # outline_box = outline_rounds_sum / len(outline_rounds)
-
-    # center = tuple(map(int, [(outline_box[0] + outline_box[2]) / 2, (outline_box[1] + outline_box[3]) / 2]))
-    # pts = [
-    #     ((outline_box[0] + outline_box[2]) / 2, outline_box[1]),
-    #     ((outline_box[0] + outline_box[2]) / 2, outline_box[3])
-    # ]
-    # cv2.circle(result4, center, 5, 255, -1)
-    # for p in pts:
-    #     cv2.circle(result4, tuple(map(int, p)), 3, (0, 255, 0), -1)
 
     last_frame = frame.copy()
 
@@ -144,27 +107,7 @@ def box_frame(frame):
 
 def state_big(frame: np.ndarray, on_quit=None, info=None):
     global last_frame, last_time, fps_time, last_timestamp, outline_rounds
-    # if last_frame is None:
-    #     last_frame = frame.copy()
-    #     return
-    # if info is not None:
-    #     if last_timestamp is None:
-    #         # last_timestamp = info.nDevTimeStampLow
-    #         last_timestamp = info.nHostTimeStamp
-    #     else:
-    #         # timestamp = info.nDevTimeStampLow
-    #         # timestamp = info.nHostTimeStamp
-    #         timestamp = get_timestamp_ms(info)
-    #         delta_timestamp = timestamp - last_timestamp
-    #         last_timestamp = timestamp
-    #         # print(f"offset: {((timestamp & 0xFFFFC000) >> 14) * 1000 / (2**13)}ms")
-    #         # print(delta_timestamp)
-    #         # print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
-    # timestamp = get_timestamp_ms(info)
-    # delta_timestamp = timestamp - last_timestamp
-    # last_timestamp = timestamp
     add_frame(frame)
-
     ans_range = calc_range()
     global D_res, D_res_count
     print(f"ans_range: {ans_range}, D_res_count: {D_res_count}")
@@ -173,21 +116,9 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
         if D_res_count <= 0:
             D_res = ans_range
             print(f"D_res: {ans_range}")
-
-    # last_frame = gray.copy()
-    # cv2.imshow("result4", result4)
-    # cv2.imshow("result", result)
-
-    # width = frame.shape[1] // 1
-    # height = frame.shape[0] // 1
-    # resized = cv2.resize(result4, (width, height))
-    # resized = cv2.resize(frame, (width, height))
-    # resized = get_resized_frame(result4)
     resized = box_frame(frame)
     cv2.imshow("frame", resized)
     cv2.setWindowProperty("frame", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    # global g_frame
-    # g_frame = resized.copy()
     now = time.time()
     time_delta = now - last_time
     print(
@@ -263,11 +194,14 @@ th_wait_key = None
 def wait_key(words: str = "Press Key to continue..."):
     global blocked
     blocked = True
-    input(words)
+    # input(words)
+    print(f"{words}")
+    time.sleep(1)
     blocked = False
 
 
 def to_idle_state():
+    print(f"[ to_idle_state() ]")
     global state, idle_start
     global D_res, D_res_count
     D_res = None
@@ -292,8 +226,17 @@ def to_idle_state():
 
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
     global switched, state, idle_start
+    # print(f" [ STATE : {state} ]")
     if state == 'init':
-        cv2.destroyAllWindows()
+        print(f" [ STATE : {state} ]")
+        # cv2.destroyAllWindows()
+
+        result = {
+            'L': float(0.1),
+            'theta': float(50.9)
+        }
+        if server_display is not None:
+            server_display.display_result(json.dumps(result))
         time.sleep(2)
         ok = False
         while not ok:
@@ -311,7 +254,6 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         boxed = box_frame(frame)
         cv2.imshow("boxed", boxed)
         cv2.waitKey(1)
-        # g_frame = boxed.copy()
         if is_master:
             if server_display:
                 try:
@@ -336,7 +278,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                 print(f"Measuring L...")
     elif state == 'big':
         if not switched:
-            cv2.destroyAllWindows()
+            # cv2.destroyAllWindows()
             time.sleep(1)
             ok = False
             while not ok:
@@ -350,7 +292,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         state_big(frame, on_quit, info)
     elif state == 'small':
         if not switched:
-            cv2.destroyAllWindows()
+            # cv2.destroyAllWindows()
             time.sleep(1)
             ok = False
             while not ok:
@@ -387,6 +329,7 @@ server_display = None
 
 def master_back_thread():
     global slave_L_res, slave_D_res, slave_L_rank
+    global state, switched
     while server is None:
         time.sleep(0.2)
     server_ok = False
@@ -483,28 +426,27 @@ def master_back_thread():
                 theta = np.arctan(D / slave_D)
                 Theta = theta / np.pi / 2 * 360
                 print(f"theta: {theta} ({Theta})")
+
+            try:
+                server.remote_set_state("idle")
+            except Exception as e:
+                print(f"set to remote idle error: {e}")
+            remote_set_state("idle")
+            # state = 'idle'
+            # switched = False
+            # to_idle_state()
+            time.sleep(3)
+
             print(f"\n==================== DONE ==================\n")
             result = {
-                'L': float(final_result_L),
-                'theta': float(Theta)
+                'L': float(final_result_L if final_result_L is not None else 0),
+                'theta': float(Theta if Theta is not None else 0)
             }
             if server_display is not None:
                 try:
-                    server_display.display_result(result)
+                    server_display.display_result(json.dumps(result))
                 except Exception as e:
                     print(f"disp result err: {e}")
-            # try:
-            #     # server.exit_slave()
-            #     raise RuntimeError("dismiss exit...")
-            # except Exception as e:
-            #     print(f"exit error: {e}")
-            #     try:
-            #         # server.remote_set_state("exit")
-            #         server.remote_set_state("idle")
-            #     except Exception as e:
-            #         print(f"set to exit error: {e}")
-
-            remote_set_state("idle")
             time.sleep(3)
 
 
@@ -558,9 +500,14 @@ def start_rpc_server():
             return b64
 
         @server.register_function
-        def display_result(res: dict):
-            L, theta = res.get("L", None), res.get("theta", None)
-            res_img = np.zeros((512, 64, 3), dtype=np.uint8)
+        def display_result(text: str):
+            res = json.loads(text)
+            L, theta = res.get("L", 0), res.get("theta", 0)
+            if L is None:
+                L = 0
+            if theta is None:
+                theta = 0
+            res_img = np.zeros((64, 6512, 3), dtype=np.uint8)
             font = cv2.FONT_HERSHEY_SIMPLEX
             cv2.putText(res_img, f"L: {L:.3f}m", (20, 0), font, 3, (0, 255, 255), 15)
             cv2.putText(res_img, f"theta: {theta:.1f}m", (20, 20), font, 3, (0, 255, 255), 15)
