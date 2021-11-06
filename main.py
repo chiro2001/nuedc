@@ -155,7 +155,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
 
 Ls = []
 Ts_offset = 2
-Ls_count = 5
+Ls_count = 2
 L_delta = 5.37 / 100
 L_result = None
 L_rank = 0
@@ -193,7 +193,7 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
                 print(f"ave = {ave}")
                 if is_master:
                     state = 'big'
-                # switched = False
+                    switched = False
                 Ls = Ls[1:]
 
 
