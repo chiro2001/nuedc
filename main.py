@@ -43,26 +43,25 @@ g_display_A = None
 g_display_B = None
 
 
-def state_big(frame: np.ndarray, on_quit=None, info=None):
+def get_resized_frame(frame):
+    if frame is None:
+        return None
+    width = frame.shape[1] // 1
+    height = frame.shape[0] // 1
+    resized = cv2.resize(frame, (width, height))
+    return resized
+
+
+def box_frame(frame):
     global last_frame, last_time, fps_time, last_timestamp, outline_rounds
+    resized_raw = get_resized_frame(frame)
     if last_frame is None:
         last_frame = frame
-        return
-    if info is not None:
-        if last_timestamp is None:
-            # last_timestamp = info.nDevTimeStampLow
-            last_timestamp = info.nHostTimeStamp
-        else:
-            # timestamp = info.nDevTimeStampLow
-            # timestamp = info.nHostTimeStamp
-            timestamp = get_timestamp_ms(info)
-            delta_timestamp = timestamp - last_timestamp
-            last_timestamp = timestamp
-            # print(f"offset: {((timestamp & 0xFFFFC000) >> 14) * 1000 / (2**13)}ms")
-            # print(delta_timestamp)
-            # print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
+        return resized_raw
+
+    last_frame = frame.copy()
+
     gray = frame
-    add_frame(frame)
     ans_range = calc_range()
     print(f"ans_range: {ans_range}")
     global D_res, D_res_count
@@ -110,7 +109,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
             outline = bounding_rects[0][1]
     if outline is None:
         # print(f"outline is None!")
-        return
+        return resized_raw
 
     result4 = cv2.rectangle(result4, tuple(outline[0:2]), tuple(np.array(outline[0:2]) + np.array(outline[2:4])),
                             (0, 0, 255), 5)
@@ -130,7 +129,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     for r in outline_rounds:
         outline_rounds_sum += np.array(r)
     if len(outline_rounds) == 0:
-        return
+        return resized_raw
     outline_box = outline_rounds_sum / len(outline_rounds)
 
     # plot = gray.copy()
@@ -143,18 +142,51 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     for p in pts:
         cv2.circle(result4, tuple(map(int, p)), 3, (0, 255, 0), -1)
 
-    last_frame = gray.copy()
+    global g_frame
+    resized = get_resized_frame(result4)
+    g_frame = resized.copy()
+
+    return resized
+
+
+def state_big(frame: np.ndarray, on_quit=None, info=None):
+    global last_frame, last_time, fps_time, last_timestamp, outline_rounds
+    if last_frame is None:
+        last_frame = frame
+        return
+    # if info is not None:
+    #     if last_timestamp is None:
+    #         # last_timestamp = info.nDevTimeStampLow
+    #         last_timestamp = info.nHostTimeStamp
+    #     else:
+    #         # timestamp = info.nDevTimeStampLow
+    #         # timestamp = info.nHostTimeStamp
+    #         timestamp = get_timestamp_ms(info)
+    #         delta_timestamp = timestamp - last_timestamp
+    #         last_timestamp = timestamp
+    #         # print(f"offset: {((timestamp & 0xFFFFC000) >> 14) * 1000 / (2**13)}ms")
+    #         # print(delta_timestamp)
+    #         # print(f"delta: {delta_timestamp}ms, {int(1 / delta_timestamp * 1000)} fps")
+    timestamp = get_timestamp_ms(info)
+    delta_timestamp = timestamp - last_timestamp
+    last_timestamp = timestamp
+    add_frame(frame)
+
+
+    # last_frame = gray.copy()
     # cv2.imshow("result4", result4)
     # cv2.imshow("result", result)
 
-    width = frame.shape[1] // 1
-    height = frame.shape[0] // 1
-    resized = cv2.resize(result4, (width, height))
+    # width = frame.shape[1] // 1
+    # height = frame.shape[0] // 1
+    # resized = cv2.resize(result4, (width, height))
     # resized = cv2.resize(frame, (width, height))
+    # resized = get_resized_frame(result4)
+    resized = box_frame(frame)
     cv2.imshow("frame", resized)
     cv2.setWindowProperty("frame", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    global g_frame
-    g_frame = resized.copy()
+    # global g_frame
+    # g_frame = resized.copy()
     now = time.time()
     time_delta = now - last_time
     print(
@@ -188,6 +220,9 @@ def remote_set_state(s: str):
     state = s
     switched = False
 
+    if state == 'idle':
+        to_idle_state()
+
 
 def state_small(frame: np.ndarray, on_quit=None, info=None):
     global Ts_offset, Ls, switched, state
@@ -220,6 +255,37 @@ switched = False
 idle_start = None
 idle_time = 5
 
+idle_wait = False
+th_wait_key = None
+
+
+def wait_key(words: str = "Press Key to continue..."):
+    global idle_wait
+    idle_wait = True
+    input(words)
+    idle_wait = False
+
+
+def to_idle_state():
+    global state, idle_start
+    global D_res, D_res_count
+    D_res = None
+    D_res_count = 20
+    global L_rank, Ls, L_result, Ls_count
+    Ls = []
+    Ls_count = 2
+    L_result = None
+    L_rank = 0
+
+    state = "idle"
+    idle_start = time.time()
+    print(f"======= IDLE =======")
+    print(f"PLEASE SHAKE IT")
+    if is_master:
+        global th_wait_key
+        th_wait_key = threading.Thread(target=wait_key)
+        th_wait_key.start()
+
 
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
     global switched, state, idle_start
@@ -236,28 +302,29 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         time.sleep(1)
         update_buf(cam)
         set_raw_image(frame)
-        state = "idle"
-        idle_start = time.time()
-        print(f"======= IDLE =======")
-        print(f"PLEASE SHAKE IT")
+        to_idle_state()
     elif state == "idle":
-        global g_slave_frame
+        global g_slave_frame, g_frame
+        boxed = box_frame(frame)
+        g_frame = boxed.copy()
         if is_master:
-            try:
-                b64 = encode_b64_img(g_frame)
-                server.set_display_frame_A(b64)
-            except Exception as e:
-                print(f"sending g frame err: {e}")
-            try:
-                b64_slave = server.get_g_frame()
-                global g_slave_frame
-                if b64_slave is not None:
-                    g_slave_frame = parse_b64_img(b64_slave)
-                server.set_display_frame_B(b64_slave)
-            except Exception as e:
-                print(f"sending frame err: {e}")
+            if server_display:
+                try:
+                    b64 = encode_b64_img(g_frame)
+                    server_display.set_display_frame_A(b64)
+                except Exception as e:
+                    print(f"sending g frame err: {e}")
+                try:
+                    b64_slave = server.get_g_frame()
+                    global g_slave_frame
+                    if b64_slave is not None:
+                        g_slave_frame = parse_b64_img(b64_slave)
+                    server_display.set_display_frame_B(b64_slave)
+                except Exception as e:
+                    print(f"sending frame err: {e}")
+                time.sleep(1)
 
-            if time.time() > idle_start + idle_time:
+            if not idle_wait:
                 state = "small"
                 server.remote_set_state("small")
                 print(f"======= L =======")
@@ -332,8 +399,11 @@ def master_back_thread():
         time_d = 0.4
         print(f"Waiting L slave...")
         while slave_L_res is None:
-            slave_L_rank = server.get_L_rank()
-            slave_L_res = server.get_L_result()
+            try:
+                slave_L_rank = server.get_L_rank()
+                slave_L_res = server.get_L_result()
+            except Exception as e:
+                print(f"get slave L err: {e}")
             time.sleep(time_d)
             time_L += time_d
             if time_L > timeout_L:
@@ -373,7 +443,10 @@ def master_back_thread():
         time.sleep(1)
         print(f"Waiting D slave...")
         while slave_D_res is None:
-            slave_D_res = server.get_D_res()
+            try:
+                slave_D_res = server.get_D_res()
+            except Exception as e:
+                print(f"get slave D err: {e}")
             time_D += time_d
             time.sleep(time_d)
             time_D += time_d
@@ -402,28 +475,35 @@ def master_back_thread():
             Theta = theta / np.pi / 2 * 360
             print(f"theta: {theta} ({Theta})")
             try:
-                server.exit_slave()
+                # server.exit_slave()
+                raise RuntimeError("dismiss exit...")
             except Exception as e:
                 print(f"exit error: {e}")
                 try:
-                    server.remote_set_state("exit")
+                    # server.remote_set_state("exit")
+                    server.remote_set_state("idle")
                 except Exception as e:
                     print(f"set to exit error: {e}")
-            remote_set_state("exit")
-            sys.exit(0)
+            # remote_set_state("exit")
+            # sys.exit(0)
+            remote_set_state("idle")
         while True:
             time.sleep(0.3)
 
 
 def parse_b64_img(b64: str):
+    if b64 is None:
+        return None
     io_buf = io.BytesIO(base64.b64decode(b64))
     decode_img = cv2.imdecode(np.frombuffer(io_buf.getbuffer(), np.uint8), -1)
     return decode_img
 
 
 def encode_b64_img(img):
+    if img is None:
+        return None
     is_success, buffer = cv2.imencode(".png", img)
-    b64 = base64.b64encode(buffer)
+    b64 = base64.b64encode(buffer).decode()
     return b64
 
 
@@ -432,6 +512,10 @@ def start_rpc_server():
                             requestHandler=RequestHandler, allow_none=True) as server:
         server.register_introspection_functions()
         server.register_function(remote_set_state)
+
+        @server.register_function
+        def test():
+            return 'OK'
 
         @server.register_function
         def get_L_rank():
@@ -459,11 +543,13 @@ def start_rpc_server():
         @server.register_function
         def set_display_frame_A(b64: str):
             global g_display_A
+            print(f"got disp A ({len(b64) if b64 is not None else None})")
             g_display_A = parse_b64_img(b64)
 
         @server.register_function
         def set_display_frame_B(b64):
             global g_display_B
+            print(f"got disp B ({len(b64) if b64 is not None else None})")
             g_display_B = parse_b64_img(b64)
 
         server.serve_forever()
@@ -474,8 +560,15 @@ def display_loop():
         try:
             if g_display_A is not None:
                 cv2.imshow("A", g_display_A)
+                # print(f"disp. A")
+                cv2.waitKey(1)
+                time.sleep(0.1)
             if g_display_B is not None:
                 cv2.imshow("B", g_display_B)
+                cv2.waitKey(1)
+                # print(f"disp. B")
+                time.sleep(0.1)
+            time.sleep(0.1)
         except Exception as e:
             print(f"display loop: {e}")
 
@@ -522,7 +615,8 @@ def main():
                 slave_ok = False
                 while not slave_ok:
                     try:
-                        server = xmlrpc.client.ServerProxy(rpc_server_url)
+                        server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
+                        server.test()
                         slave_ok = True
                     except Exception as e:
                         print(f"{e}")
@@ -530,9 +624,12 @@ def main():
                 print(f"check if display started")
                 global server_display
                 try:
-                    server_display = xmlrpc.client.ServerProxy(rpc_display_url)
+                    server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
+                    server_display.test()
                 except Exception as e:
                     print(f"{e}")
+                if server_display is None:
+                    print(f"No C display detected!")
 
                 print(f"rpc server at: {rpc_server_url}")
                 th = threading.Thread(target=master_back_thread, daemon=True)

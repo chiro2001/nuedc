@@ -39,9 +39,9 @@ def calc_range():
     sums /= m
     left = 0
     right = len(sums) - 1
-    while sums[left] < 0.5 and left < len(sums):
+    while left < len(sums) and sums[left] < 0.5:
         left += 1
-    while sums[right] < 0.5 and right >= 0:
+    while right >= 0 and sums[right] < 0.5:
         right -= 1
     ans = right - left
     # print(f"[{right} - {left} = {ans}]sums: {sums.shape}")
