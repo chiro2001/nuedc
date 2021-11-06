@@ -45,6 +45,8 @@ g_display_B = None
 
 
 def get_enhanced_frame(frame, alpha=1.3, beta=30):
+    if frame is None:
+        return None
     return np.uint8(np.clip((alpha * frame + beta), 0, 255))
 
 
@@ -264,13 +266,25 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         print(f" [ STATE : {state} ]")
         # cv2.destroyAllWindows()
 
+        if server_display is None:
+            time.sleep(0.5)
+            print(f"======== WA : No C Client, wait... ========")
+            return
         result = {
             'L': float(0.1),
             'theta': float(50.9)
         }
         if server_display is not None:
-            r = server_display.display_result(json.dumps(result))
-            print(f"r = {r}")
+            sent = False
+            time.sleep(0.5)
+            while not sent:
+                try:
+                    r = server_display.display_result(json.dumps(result))
+                    print(f"r = {r}")
+                    sent = True
+                except Exception as e:
+                    print(f"cannot send result: {e}")
+                    time.sleep(0.5)
         else:
             print(f"======== WA : No C Client ========")
         time.sleep(2)
@@ -506,71 +520,88 @@ def encode_b64_img(img):
 
 
 def start_rpc_server():
-    with SimpleXMLRPCServer(("0.0.0.0", 8000),
-                            requestHandler=RequestHandler, allow_none=True) as server:
-        server.register_introspection_functions()
-        server.register_function(remote_set_state)
+    server = SimpleXMLRPCServer(("0.0.0.0", 8000), requestHandler=RequestHandler, allow_none=True)
+    server.register_introspection_functions()
+    server.register_function(remote_set_state)
 
-        @server.register_function
-        def test():
-            return 'OK'
+    @server.register_function
+    def test():
+        return 'OK'
 
-        @server.register_function
-        def get_L_rank():
-            return L_rank
+    @server.register_function
+    def get_L_rank():
+        return L_rank
 
-        @server.register_function
-        def get_L_result():
-            return L_result
+    @server.register_function
+    def get_L_result():
+        return L_result
 
-        @server.register_function
-        def get_D_res():
-            return D_res
+    @server.register_function
+    def get_D_res():
+        return D_res
 
-        @server.register_function
-        def exit_slave():
-            sys.exit(0)
+    @server.register_function
+    def exit_slave():
+        sys.exit(0)
 
-        @server.register_function
-        def get_g_frame():
-            if g_frame is None:
-                return None
-            b64 = encode_b64_img(g_frame)
-            return b64
+    @server.register_function
+    def get_g_frame():
+        if g_frame is None:
+            return None
+        b64 = encode_b64_img(g_frame)
+        return b64
 
-        @server.register_function
-        def display_result(text):
-            # res = json.loads(text)
-            # L, theta = res.get("L", 0), res.get("theta", 0)
-            # if L is None:
-            #     L = 0
-            # if theta is None:
-            #     theta = 0
-            # res_img = np.zeros((64, 6512, 3), dtype=np.uint8)
-            # font = cv2.FONT_HERSHEY_SIMPLEX
-            # cv2.putText(res_img, f"L: {L:.3f}m", (20, 0), font, 3, (0, 255, 255), 15)
-            # cv2.putText(res_img, f"theta: {theta:.1f}m", (20, 20), font, 3, (0, 255, 255), 15)
-            # cv2.imshow("result", res_img)
+    @server.register_function
+    def display_result(text_):
+        print(f"\n================ RESULT =================\n")
+        print(f"{text_}")
+
+        def process_result(text):
+            res = json.loads(text)
+            L, theta = res.get("L", 0), res.get("theta", 0)
+            if L is None:
+                L = 0
+            if theta is None:
+                theta = 0
+            res_img = np.zeros((180, 768, 3), dtype=np.uint8)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(res_img, f"L: {L:.3f}m", (20, 48), font, 2, (0, 255, 255), 2)
+            cv2.putText(res_img, f"theta: {theta:.1f}(degree)", (20, 120), font, 2, (0, 255, 255), 2)
+            cv2.imshow("result", res_img)
             # cv2.waitKey(1)
-            print(f"\n================ RESULT =================\n")
-            print(f"{text}")
-            return "OK"
 
-        @server.register_function
-        def set_display_frame_A(b64: str):
-            global g_display_A
-            print(f"got disp A ({len(b64) if b64 is not None else None})")
-            display_A = parse_b64_img(b64)
-            g_display_A = get_expanded_frame(display_A)
+        threading.Thread(target=process_result, args=(text_,), daemon=True).start()
 
-        @server.register_function
-        def set_display_frame_B(b64):
-            global g_display_B
-            print(f"got disp B ({len(b64) if b64 is not None else None})")
-            display_B = parse_b64_img(b64)
-            g_display_B = get_expanded_frame(display_B)
+        return "OK"
 
-        server.serve_forever()
+    global g_display_A, g_display_B
+
+    @server.register_function
+    def set_display_frame_A(b64: str):
+        global g_display_A
+        display_A = parse_b64_img(b64)
+        g_display_A = get_expanded_frame(display_A)
+        print(
+            f"got disp A [{g_display_A.shape if g_display_A is not None else None}] ({len(b64) if b64 is not None else None})")
+
+    @server.register_function
+    def set_display_frame_B(b64):
+        global g_display_B
+        display_B = parse_b64_img(b64)
+        g_display_B = get_expanded_frame(display_B)
+        print(
+            f"got disp B [{g_display_B.shape if g_display_B is not None else None}] ({len(b64) if b64 is not None else None})")
+
+    server.serve_forever()
+
+
+def wait_key_loop():
+    while True:
+        try:
+            # cv2.waitKey(10)
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"wait_key: {e}")
 
 
 def display_loop():
@@ -578,15 +609,19 @@ def display_loop():
         try:
             if g_display_A is not None:
                 cv2.imshow("A", g_display_A)
-                # print(f"disp. A")
-                cv2.waitKey(1)
+                print(f"disp. A: {g_display_A.shape}")
+                cv2.waitKey(10)
                 time.sleep(0.1)
+            else:
+                print(f"WA: No disp A")
             if g_display_B is not None:
                 cv2.imshow("B", g_display_B)
-                cv2.waitKey(1)
-                # print(f"disp. B")
+                print(f"disp. B: {g_display_A.shape}")
+                cv2.waitKey(10)
                 time.sleep(0.1)
-            time.sleep(0.1)
+            else:
+                print(f"WA: No disp B")
+            time.sleep(0.05)
         except Exception as e:
             print(f"display loop: {e}")
 
@@ -594,52 +629,22 @@ def display_loop():
 def main():
     global server
     if is_display:
+        threading.Thread(target=wait_key_loop, daemon=True).start()
         threading.Thread(target=display_loop, daemon=True).start()
         start_rpc_server()
     else:
+        hostname = os.popen("hostname").readline()
+        camera_target = [
+            '192.168.137.21',
+            '192.168.137.23'
+        ]
+        camera_id = int(hostname.replace('\n', "")[-1]) - 1
+        host_ips = [
+            "192.168.137.231",
+            "192.168.137.232",
+            '192.168.137.230'
+        ]
         if test_number == 1 or test_number == 2:
-            if not is_master:
-                pass
-            else:
-                rpc_display_url = f"http://{host_ips[2]}:8000"
-                print(f"check if display started")
-                global server_display
-                try:
-                    server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
-                    server_display.test()
-                except Exception as e:
-                    print(f"{e}")
-                    server_display = None
-                if server_display is None:
-                    print(f"No C display detected!")
-                rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
-                print(f"wait slave start...")
-                slave_ok = False
-                while not slave_ok:
-                    try:
-                        server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
-                        server.test()
-                        slave_ok = True
-                    except Exception as e:
-                        print(f"{e}")
-                        time.sleep(0.5)
-
-                print(f"rpc server at: {rpc_server_url}")
-                th = threading.Thread(target=master_back_thread, daemon=True)
-                th.start()
-                while True:
-                    time.sleep(0.1)
-            hostname = os.popen("hostname").readline()
-            camera_target = [
-                '192.168.137.21',
-                '192.168.137.23'
-            ]
-            camera_id = int(hostname.replace('\n', "")[-1]) - 1
-            host_ips = [
-                "192.168.137.231",
-                "192.168.137.232",
-                '192.168.137.230'
-            ]
             device_list = find_cameras()
             mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
             ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
@@ -655,11 +660,39 @@ def main():
             if not is_master:
                 rpc_server_url = f"http://{host_ips[camera_id]}:8000"
                 print(f"rpc server will run on: {rpc_server_url}")
-
                 start_rpc_server()
             else:
-                while True:
-                    time.sleep(0.1)
+                if not is_master:
+                    pass
+                else:
+                    rpc_display_url = f"http://{host_ips[2]}:8000"
+                    print(f"check if display started")
+                    global server_display
+                    try:
+                        server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
+                        server_display.test()
+                    except Exception as e:
+                        print(f"{e}")
+                        server_display = None
+                    if server_display is None:
+                        print(f"No C display detected!")
+                    rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+                    print(f"wait slave start...")
+                    slave_ok = False
+                    while not slave_ok:
+                        try:
+                            server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
+                            server.test()
+                            slave_ok = True
+                        except Exception as e:
+                            print(f"{e}")
+                            time.sleep(0.5)
+
+                    print(f"rpc server at: {rpc_server_url}")
+                    th = threading.Thread(target=master_back_thread, daemon=True)
+                    th.start()
+                    while True:
+                        time.sleep(0.1)
 
 
 if __name__ == '__main__':
