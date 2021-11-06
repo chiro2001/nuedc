@@ -1,6 +1,7 @@
 import os
 import cv2
 import threading
+import base64
 import numpy as np
 from capture import start_capture, find_cameras, update_buf
 from ctypes import *
@@ -8,6 +9,7 @@ from MvImport.MvCameraControl_class import *
 import time
 from update_config import update_config
 from utils import *
+import io
 from calc_time import calc_time
 from calc_range import calc_range, add_frame, set_raw_image
 
@@ -34,6 +36,11 @@ states = {
     "small": 2
 }
 state = "init"
+
+g_frame = None
+g_slave_frame = None
+g_display_A = None
+g_display_B = None
 
 
 def state_big(frame: np.ndarray, on_quit=None, info=None):
@@ -146,6 +153,8 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     # resized = cv2.resize(frame, (width, height))
     cv2.imshow("frame", resized)
     cv2.setWindowProperty("frame", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    global g_frame
+    g_frame = resized.copy()
     now = time.time()
     time_delta = now - last_time
     print(
@@ -232,11 +241,27 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         print(f"======= IDLE =======")
         print(f"PLEASE SHAKE IT")
     elif state == "idle":
-        if time.time() > idle_start + idle_time and is_master:
-            state = "small"
-            server.remote_set_state("small")
-            print(f"======= L =======")
-            print(f"Measuring L...")
+        global g_slave_frame
+        if is_master:
+            try:
+                b64 = encode_b64_img(g_frame)
+                server.set_display_frame_A(b64)
+            except Exception as e:
+                print(f"sending g frame err: {e}")
+            try:
+                b64_slave = server.get_g_frame()
+                global g_slave_frame
+                if b64_slave is not None:
+                    g_slave_frame = parse_b64_img(b64_slave)
+                server.set_display_frame_B(b64_slave)
+            except Exception as e:
+                print(f"sending frame err: {e}")
+
+            if time.time() > idle_start + idle_time:
+                state = "small"
+                server.remote_set_state("small")
+                print(f"======= L =======")
+                print(f"Measuring L...")
     elif state == 'big':
         if not switched:
             cv2.destroyAllWindows()
@@ -270,8 +295,10 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
 
 
 master = os.environ.get("MASTER", "rpi01")
+display = os.environ.get("DISP", "rpi00")
 myself = os.popen("hostname").readline().replace("\n", "")
 is_master = master == myself
+is_display = display == myself
 if is_master:
     print(f"Master running!")
 else:
@@ -283,6 +310,7 @@ slave_L_res = None
 slave_L_rank = None
 
 server = None
+server_display = None
 
 
 def master_back_thread():
@@ -387,72 +415,130 @@ def master_back_thread():
             time.sleep(0.3)
 
 
+def parse_b64_img(b64: str):
+    io_buf = io.BytesIO(base64.b64decode(b64))
+    decode_img = cv2.imdecode(np.frombuffer(io_buf.getbuffer(), np.uint8), -1)
+    return decode_img
+
+
+def encode_b64_img(img):
+    is_success, buffer = cv2.imencode(".png", img)
+    b64 = base64.b64encode(buffer)
+    return b64
+
+
+def start_rpc_server():
+    with SimpleXMLRPCServer(("0.0.0.0", 8000),
+                            requestHandler=RequestHandler, allow_none=True) as server:
+        server.register_introspection_functions()
+        server.register_function(remote_set_state)
+
+        @server.register_function
+        def get_L_rank():
+            return L_rank
+
+        @server.register_function
+        def get_L_result():
+            return L_result
+
+        @server.register_function
+        def get_D_res():
+            return D_res
+
+        @server.register_function
+        def exit_slave():
+            sys.exit(0)
+
+        @server.register_function
+        def get_g_frame():
+            if g_frame is None:
+                return None
+            b64 = encode_b64_img(g_frame)
+            return b64
+
+        @server.register_function
+        def set_display_frame_A(b64: str):
+            global g_display_A
+            g_display_A = parse_b64_img(b64)
+
+        @server.register_function
+        def set_display_frame_B(b64):
+            global g_display_B
+            g_display_B = parse_b64_img(b64)
+
+        server.serve_forever()
+
+
+def display_loop():
+    while True:
+        try:
+            if g_display_A is not None:
+                cv2.imshow("A", g_display_A)
+            if g_display_B is not None:
+                cv2.imshow("B", g_display_B)
+        except Exception as e:
+            print(f"display loop: {e}")
+
+
 def main():
     global server
-    if test_number == 1 or test_number == 2:
-        hostname = os.popen("hostname").readline()
-        camera_target = [
-            '192.168.137.21',
-            '192.168.137.23'
-        ]
-        camera_id = int(hostname.replace('\n', "")[-1]) - 1
-        host_ips = [
-            "192.168.137.231",
-            "192.168.137.232",
-        ]
-        device_list = find_cameras()
-        mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
-        ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
-                                     ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16),
-                                     ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8),
-                                     (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff))
-        if ip_addr == camera_target[0]:
-            print(f"using: cam0{camera_id} {camera_target[camera_id]}")
-            start_capture(device_list, camera_id, on_frame, to_exit=False)
-        else:
-            print(f"using: cam0{camera_id} {camera_target[camera_id]}")
-            start_capture(device_list, 1 - camera_id, on_frame, to_exit=False)
-        if not is_master:
-            rpc_server_url = f"http://{host_ips[camera_id]}:8000"
-            print(f"rpc server will run on: {rpc_server_url}")
-            with SimpleXMLRPCServer(("0.0.0.0", 8000),
-                                    requestHandler=RequestHandler, allow_none=True) as server:
-                server.register_introspection_functions()
-                server.register_function(remote_set_state)
+    if is_display:
+        threading.Thread(target=display_loop, daemon=True).start()
+        start_rpc_server()
+    else:
+        if test_number == 1 or test_number == 2:
+            hostname = os.popen("hostname").readline()
+            camera_target = [
+                '192.168.137.21',
+                '192.168.137.23'
+            ]
+            camera_id = int(hostname.replace('\n', "")[-1]) - 1
+            host_ips = [
+                "192.168.137.231",
+                "192.168.137.232",
+                '192.168.137.230'
+            ]
+            device_list = find_cameras()
+            mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
+            ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
+                                         ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16),
+                                         ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8),
+                                         (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff))
+            if ip_addr == camera_target[0]:
+                print(f"using: cam0{camera_id} {camera_target[camera_id]}")
+                start_capture(device_list, camera_id, on_frame, to_exit=False)
+            else:
+                print(f"using: cam0{camera_id} {camera_target[camera_id]}")
+                start_capture(device_list, 1 - camera_id, on_frame, to_exit=False)
+            if not is_master:
+                rpc_server_url = f"http://{host_ips[camera_id]}:8000"
+                print(f"rpc server will run on: {rpc_server_url}")
 
-                @server.register_function
-                def get_L_rank():
-                    return L_rank
-
-                @server.register_function
-                def get_L_result():
-                    return L_result
-
-                @server.register_function
-                def get_D_res():
-                    return D_res
-
-                @server.register_function
-                def exit_slave():
-                    sys.exit(0)
-
-                server.serve_forever()
-        else:
-            rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
-            print(f"wait slave start...")
-            slave_ok = False
-            while not slave_ok:
+                start_rpc_server()
+            else:
+                rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+                rpc_display_url = f"http://{host_ips[2]}:8000"
+                print(f"wait slave start...")
+                slave_ok = False
+                while not slave_ok:
+                    try:
+                        server = xmlrpc.client.ServerProxy(rpc_server_url)
+                        slave_ok = True
+                    except Exception as e:
+                        print(f"{e}")
+                        time.sleep(0.5)
+                print(f"check if display started")
+                global server_display
                 try:
-                    server = xmlrpc.client.ServerProxy(rpc_server_url)
-                    slave_ok = True
+                    server_display = xmlrpc.client.ServerProxy(rpc_display_url)
                 except Exception as e:
                     print(f"{e}")
-                    time.sleep(0.5)
-            print(f"rpc server at: {rpc_server_url}")
-            th = threading.Thread(target=master_back_thread, daemon=True)
-            th.start()
-            while True:
-                time.sleep(0.1)
+
+                print(f"rpc server at: {rpc_server_url}")
+                th = threading.Thread(target=master_back_thread, daemon=True)
+                th.start()
+                while True:
+                    time.sleep(0.1)
 
 
 if __name__ == '__main__':
