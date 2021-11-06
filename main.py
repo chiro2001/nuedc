@@ -269,7 +269,10 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
             'theta': float(50.9)
         }
         if server_display is not None:
-            server_display.display_result(json.dumps(result))
+            r = server_display.display_result(json.dumps(result))
+            print(f"r = {r}")
+        else:
+            print(f"======== WA : No C Client ========")
         time.sleep(2)
         ok = False
         while not ok:
@@ -536,7 +539,7 @@ def start_rpc_server():
             return b64
 
         @server.register_function
-        def display_result(text: str):
+        def display_result(text):
             # res = json.loads(text)
             # L, theta = res.get("L", 0), res.get("theta", 0)
             # if L is None:
@@ -551,6 +554,7 @@ def start_rpc_server():
             # cv2.waitKey(1)
             print(f"\n================ RESULT =================\n")
             print(f"{text}")
+            return "OK"
 
         @server.register_function
         def set_display_frame_A(b64: str):
@@ -594,6 +598,37 @@ def main():
         start_rpc_server()
     else:
         if test_number == 1 or test_number == 2:
+            if not is_master:
+                pass
+            else:
+                rpc_display_url = f"http://{host_ips[2]}:8000"
+                print(f"check if display started")
+                global server_display
+                try:
+                    server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
+                    server_display.test()
+                except Exception as e:
+                    print(f"{e}")
+                    server_display = None
+                if server_display is None:
+                    print(f"No C display detected!")
+                rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+                print(f"wait slave start...")
+                slave_ok = False
+                while not slave_ok:
+                    try:
+                        server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
+                        server.test()
+                        slave_ok = True
+                    except Exception as e:
+                        print(f"{e}")
+                        time.sleep(0.5)
+
+                print(f"rpc server at: {rpc_server_url}")
+                th = threading.Thread(target=master_back_thread, daemon=True)
+                th.start()
+                while True:
+                    time.sleep(0.1)
             hostname = os.popen("hostname").readline()
             camera_target = [
                 '192.168.137.21',
@@ -623,32 +658,6 @@ def main():
 
                 start_rpc_server()
             else:
-                rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
-                rpc_display_url = f"http://{host_ips[2]}:8000"
-                print(f"wait slave start...")
-                slave_ok = False
-                while not slave_ok:
-                    try:
-                        server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
-                        server.test()
-                        slave_ok = True
-                    except Exception as e:
-                        print(f"{e}")
-                        time.sleep(0.5)
-                print(f"check if display started")
-                global server_display
-                try:
-                    server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
-                    server_display.test()
-                except Exception as e:
-                    print(f"{e}")
-                    server_display = None
-                if server_display is None:
-                    print(f"No C display detected!")
-
-                print(f"rpc server at: {rpc_server_url}")
-                th = threading.Thread(target=master_back_thread, daemon=True)
-                th.start()
                 while True:
                     time.sleep(0.1)
 
