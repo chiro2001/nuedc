@@ -157,6 +157,7 @@ Ls = []
 Ts_offset = 2
 Ls_count = 2
 L_delta = 5.37 / 100
+D_delta = 40
 L_result = None
 L_rank = 0
 
@@ -343,10 +344,17 @@ def master_back_thread():
         if slave_D_res is not None:
             slave_D = slave_D_res if slave_D_res != 0 else 1e-9
             D = D_res if D_res is not None else 0
+            if D > 40:
+                D = abs(D - D_delta)
+            if slave_D > 40:
+                slave_D = abs(slave_D - D_delta)
             theta = np.arctan(D / slave_D)
             Theta = theta / np.pi / 2 * 360
             print(f"theta: {theta} ({Theta})")
-            server.exit_slave()
+            try:
+                server.exit_slave()
+            except Exception as e:
+                print(f"{e}")
             sys.exit(0)
         while True:
             time.sleep(0.3)
