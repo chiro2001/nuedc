@@ -23,7 +23,8 @@ def add_frame(frame):
     try:
         diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
                                np.array(raw_image, dtype=np.int16)), dtype=np.uint8)
-    except ValueError:
+    except Exception as e:
+        print(f"add_frame: {e}")
         init_superposition(frame.shape)
         diff = np.array(np.abs(np.array(frame, dtype=np.int16) -
                                np.array(raw_image, dtype=np.int16)), dtype=np.uint8)

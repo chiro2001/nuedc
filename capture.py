@@ -106,7 +106,7 @@ def update_buf(cam):
     data_buf = (c_ubyte * nPayloadSize)()
 
 
-def start_capture(deviceList, nConnectionNum, on_frame):
+def start_capture(deviceList, nConnectionNum, on_frame, to_exit=None):
     # global cam
     # ch:创建相机实例 | en:Creat Camera Object
     cam = MvCamera()
@@ -159,36 +159,37 @@ def start_capture(deviceList, nConnectionNum, on_frame):
     # msvcrt.getch()
     # input("Enter...")
 
-    # g_bExit = True
-    # hThreadHandle.join()
-    while True:
-        if g_bExit:
-            hThreadHandle.join()
-            break
-        time.sleep(0.1)
+    if to_exit:
+        # g_bExit = True
+        # hThreadHandle.join()
+        while True:
+            if g_bExit:
+                hThreadHandle.join()
+                break
+            time.sleep(0.1)
 
-    # ch:停止取流 | en:Stop grab image
-    ret = cam.MV_CC_StopGrabbing()
-    if ret != 0:
-        print("stop grabbing fail! ret[0x%x]" % ret)
-        del data_buf
-        sys.exit()
+        # ch:停止取流 | en:Stop grab image
+        ret = cam.MV_CC_StopGrabbing()
+        if ret != 0:
+            print("stop grabbing fail! ret[0x%x]" % ret)
+            del data_buf
+            sys.exit()
 
-    # ch:关闭设备 | Close device
-    ret = cam.MV_CC_CloseDevice()
-    if ret != 0:
-        print("close deivce fail! ret[0x%x]" % ret)
-        del data_buf
-        sys.exit()
+        # ch:关闭设备 | Close device
+        ret = cam.MV_CC_CloseDevice()
+        if ret != 0:
+            print("close deivce fail! ret[0x%x]" % ret)
+            del data_buf
+            sys.exit()
 
-    # ch:销毁句柄 | Destroy handle
-    ret = cam.MV_CC_DestroyHandle()
-    if ret != 0:
-        print("destroy handle fail! ret[0x%x]" % ret)
-        del data_buf
-        sys.exit()
+        # ch:销毁句柄 | Destroy handle
+        ret = cam.MV_CC_DestroyHandle()
+        if ret != 0:
+            print("destroy handle fail! ret[0x%x]" % ret)
+            del data_buf
+            sys.exit()
 
-    del data_buf
+        # del data_buf
 
 
 def find_cameras():

@@ -24,6 +24,8 @@ fps_count = 60
 outline_rounds = []
 outline_count = 2
 
+D_res = None
+
 states = {
     "init": 0,
     "big": 1,
@@ -54,8 +56,16 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     add_frame(frame)
     ans_range = calc_range()
     print(f"ans_range: {ans_range}")
-    diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
-                           np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
+    global D_res
+    D_res = ans_range
+    try:
+        diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
+                               np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
+    except Exception as e:
+        print(f"state_big: {e}")
+        last_frame = gray.copy()
+        diff = np.array(np.abs(np.array(gray, dtype=np.int16) -
+                               np.array(last_frame, dtype=np.int16)), dtype=np.uint8)
     _, threshold = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     # kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
@@ -116,7 +126,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     for p in pts:
         cv2.circle(result4, tuple(map(int, p)), 3, 255, -1)
 
-    last_frame = gray
+    last_frame = gray.copy()
     # cv2.imshow("result4", result4)
     # cv2.imshow("result", result)
 
@@ -149,6 +159,16 @@ L_result = None
 L_rank = 0
 
 
+class RequestHandler(SimpleXMLRPCRequestHandler):
+    rpc_paths = ('/RPC2', '/RPC3')
+
+
+def remote_set_state(s: str):
+    global state, switched
+    state = s
+    switched = False
+
+
 def state_small(frame: np.ndarray, on_quit=None, info=None):
     global Ts_offset, Ls, switched, state
     res = calc_time(frame, info)
@@ -167,9 +187,10 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             if len(Ls) >= Ls_count:
                 ave = np.sum(np.array(Ls)) / len(Ls)
                 global L_result
-                L_result = ave
+                L_result = float(ave)
                 print(f"ave = {ave}")
-                # state = 'big'
+                if is_master:
+                    state = 'big'
                 # switched = False
                 Ls = Ls[1:]
 
@@ -180,11 +201,17 @@ switched = False
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
     global switched, state
     if state == 'init':
+        cv2.destroyAllWindows()
+        time.sleep(0.5)
+        update_config(cam, "big", on_pause)
+        time.sleep(0.5)
+        update_buf(cam)
         set_raw_image(frame)
         state = "small"
     elif state == 'big':
         if not switched:
             cv2.destroyAllWindows()
+            time.sleep(0.5)
             update_config(cam, "big", on_pause)
             update_buf(cam)
             switched = True
@@ -192,31 +219,74 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
     elif state == 'small':
         if not switched:
             cv2.destroyAllWindows()
+            time.sleep(0.5)
             update_config(cam, "small", on_pause)
             update_buf(cam)
             switched = True
         state_small(frame, on_quit, info)
 
 
+master = os.environ.get("MASTER", "rpi02")
+myself = os.popen("hostname").readline().replace("\n", "")
+is_master = master == myself
+if is_master:
+    print(f"Master running!")
+else:
+    print(f"Slave running!")
+test_number = int(os.environ.get("TASK", "1"))
+
+
 def main():
-    hostname = os.popen("hostname").readline()
-    camera_target = [
-        '192.168.137.21',
-        '192.168.137.23'
-    ]
-    camera_id = int(hostname.replace('\n', "")[-1]) - 1
-    device_list = find_cameras()
-    mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
-    ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
-                                 ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16),
-                                 ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8),
-                                 (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff))
-    if ip_addr == camera_target[0]:
-        print(f"using: cam0{camera_id} {camera_target[camera_id]}")
-        start_capture(device_list, camera_id, on_frame)
-    else:
-        print(f"using: cam0{camera_id} {camera_target[camera_id]}")
-        start_capture(device_list, 1 - camera_id, on_frame)
+    if test_number == 1 or test_number == 2:
+        hostname = os.popen("hostname").readline()
+        camera_target = [
+            '192.168.137.21',
+            '192.168.137.23'
+        ]
+        camera_id = int(hostname.replace('\n', "")[-1]) - 1
+        host_ips = [
+            "192.168.137.231",
+            "192.168.137.231",
+        ]
+        device_list = find_cameras()
+        mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
+        ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
+                                     ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16),
+                                     ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8),
+                                     (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff))
+        if ip_addr == camera_target[0]:
+            print(f"using: cam0{camera_id} {camera_target[camera_id]}")
+            start_capture(device_list, camera_id, on_frame, to_exit=False)
+        else:
+            print(f"using: cam0{camera_id} {camera_target[camera_id]}")
+            start_capture(device_list, 1 - camera_id, on_frame, to_exit=False)
+        if not is_master:
+            rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+            print(f"rpc server will run on: {rpc_server_url}")
+            with SimpleXMLRPCServer((host_ips[1 - camera_id], 8000),
+                                    requestHandler=RequestHandler, allow_none=True) as server:
+                server.register_introspection_functions()
+                server.register_function(remote_set_state)
+
+                @server.register_function
+                def get_L_rank():
+                    return L_rank
+
+                @server.register_function
+                def get_L_result():
+                    return L_result
+
+                @server.register_function
+                def get_D_res():
+                    return D_res
+
+                server.serve_forever()
+        else:
+            rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+            server = xmlrpc.client.ServerProxy(rpc_server_url)
+            print(f"rpc server at: {rpc_server_url}")
+            while True:
+                time.sleep(0.1)
 
 
 if __name__ == '__main__':
