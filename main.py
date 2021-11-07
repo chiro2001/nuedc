@@ -267,22 +267,23 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         print(f" [ STATE : {state} ]")
         # cv2.destroyAllWindows()
 
-        if server_display is None:
-            time.sleep(0.5)
-            print(f"======== WA : No C Client, wait... ========")
-            return
-        if server_display is not None:
-            sent = False
-            time.sleep(0.5)
-            while not sent:
-                try:
-                    server_display.set_display_state("init")
-                    sent = True
-                except Exception as e:
-                    print(f"cannot send result: {e}")
-                    time.sleep(0.5)
-        else:
-            print(f"======== WA : No C Client ========")
+        if is_master:
+            if server_display is None:
+                time.sleep(0.5)
+                print(f"======== WA : No C Client, wait... ========")
+                return
+            if server_display is not None:
+                sent = False
+                time.sleep(0.5)
+                while not sent:
+                    try:
+                        server_display.set_display_state("init")
+                        sent = True
+                    except Exception as e:
+                        print(f"cannot send result: {e}")
+                        time.sleep(0.5)
+            else:
+                print(f"======== WA : No C Client ========")
         time.sleep(2)
         ok = False
         while not ok:
@@ -295,18 +296,19 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         update_buf(cam)
         set_raw_image(frame)
         to_idle_state()
-        if server_display is not None:
-            sent = False
-            time.sleep(0.5)
-            while not sent:
-                try:
-                    server_display.set_display_state("idle")
-                    sent = True
-                except Exception as e:
-                    print(f"cannot send result: {e}")
-                    time.sleep(0.5)
-        else:
-            print(f"======== WA : No C Client ========")
+        if is_master:
+            if server_display is not None:
+                sent = False
+                time.sleep(0.5)
+                while not sent:
+                    try:
+                        server_display.set_display_state("idle")
+                        sent = True
+                    except Exception as e:
+                        print(f"cannot send result: {e}")
+                        time.sleep(0.5)
+            else:
+                print(f"======== WA : No C Client ========")
     elif state == "idle":
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
