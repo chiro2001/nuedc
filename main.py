@@ -152,8 +152,8 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
             print(f"D_res: {ans_range}")
     resized = box_frame(frame)
     expanded = get_expanded_frame(resized)
-    cv2.imshow("frame", expanded)
-    cv2.setWindowProperty("frame", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.imshow("boxed", expanded)
+    cv2.setWindowProperty("boxed", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.waitKey(1)
     now = time.time()
     time_delta = now - last_time
@@ -312,6 +312,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         boxed = box_frame(frame)
         boxed = get_enhanced_frame(boxed, alpha=4, beta=0)
         cv2.imshow("boxed", boxed)
+        cv2.setWindowProperty("boxed", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.waitKey(1)
         if is_master:
             if server_display:
