@@ -279,8 +279,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
             time.sleep(0.5)
             while not sent:
                 try:
-                    r = server_display.display_result(json.dumps(result))
-                    print(f"r = {r}")
+                    server_display.set_display_state("init")
                     sent = True
                 except Exception as e:
                     print(f"cannot send result: {e}")
@@ -299,6 +298,18 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         update_buf(cam)
         set_raw_image(frame)
         to_idle_state()
+        if server_display is not None:
+            sent = False
+            time.sleep(0.5)
+            while not sent:
+                try:
+                    server_display.set_display_state("idle")
+                    sent = True
+                except Exception as e:
+                    print(f"cannot send result: {e}")
+                    time.sleep(0.5)
+        else:
+            print(f"======== WA : No C Client ========")
     elif state == "idle":
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
@@ -324,8 +335,9 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                 time.sleep(0.1)
 
             if not blocked:
-                state = "small"
+                # state = "small"
                 server.remote_set_state("small")
+                remote_set_state("small")
                 print(f"======= L =======")
                 print(f"Measuring L...")
     elif state == 'big':
@@ -395,6 +407,12 @@ def master_back_thread():
         if state == 'idle':
             time.sleep(0.1)
         elif state == 'small' or state == 'big':
+            if server_display is not None:
+                try:
+                    server_display.set_display_state("measuring")
+                except Exception as e:
+                    print(f"disp result err: {e}")
+                    time.sleep(0.4)
             timeout_L = 20
             timeout_D = 20
             time_L = 0.0
@@ -495,10 +513,15 @@ def master_back_thread():
                 'theta': float(Theta if Theta is not None else 0)
             }
             if server_display is not None:
-                try:
-                    server_display.display_result(json.dumps(result))
-                except Exception as e:
-                    print(f"disp result err: {e}")
+                sent = False
+                while not sent:
+                    try:
+                        server_display.display_result(json.dumps(result))
+                        server_display.set_display_state("idle")
+                        sent = True
+                    except Exception as e:
+                        print(f"disp result err: {e}")
+                        time.sleep(0.4)
             time.sleep(3)
 
 
@@ -556,21 +579,9 @@ def start_rpc_server():
         print(f"\n================ RESULT =================\n")
         print(f"{text_}")
 
-        def process_result(text):
-            res = json.loads(text)
-            L, theta = res.get("L", 0), res.get("theta", 0)
-            if L is None:
-                L = 0
-            if theta is None:
-                theta = 0
-            res_img = np.zeros((180, 768, 3), dtype=np.uint8)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(res_img, f"L: {L:.3f}m", (20, 48), font, 2, (0, 255, 255), 2)
-            cv2.putText(res_img, f"theta: {theta:.1f}(degree)", (20, 120), font, 2, (0, 255, 255), 2)
-            cv2.imshow("result", res_img)
-            # cv2.waitKey(1)
-
-        threading.Thread(target=process_result, args=(text_,), daemon=True).start()
+        # threading.Thread(target=process_result, args=(text_,), daemon=True).start()
+        global g_display_result
+        g_display_result = json.loads(text_)
 
         return "OK"
 
@@ -592,6 +603,11 @@ def start_rpc_server():
         print(
             f"got disp B [{g_display_B.shape if g_display_B is not None else None}] ({len(b64) if b64 is not None else None})")
 
+    @server.register_function
+    def set_display_state(s: str):
+        global g_display_state
+        g_display_state = s
+
     server.serve_forever()
 
 
@@ -604,24 +620,73 @@ def wait_key_loop():
             print(f"wait_key: {e}")
 
 
+g_display_result = None
+g_display_state = "init"
+g_display_size = (1920, 1080)
+g_display_font = cv2.FONT_HERSHEY_SIMPLEX
+
+
+def destroy_window(name: str):
+    try:
+        cv2.destroyWindow(name)
+    except Exception:
+        pass
+
+
+def create_bg(text):
+    bg = np.zeros([g_display_size[1], g_display_size[0], 3], dtype=np.uint8)
+    cv2.putText(bg, text, (20, 100), g_display_font, 3, (0, 255, 255), 3)
+    return bg
+
+
 def display_loop():
     while True:
         try:
-            if g_display_A is not None:
-                cv2.imshow("A", g_display_A)
-                print(f"disp. A: {g_display_A.shape}")
-                cv2.waitKey(10)
-                time.sleep(0.1)
-            else:
-                print(f"WA: No disp A")
-            if g_display_B is not None:
-                cv2.imshow("B", g_display_B)
-                print(f"disp. B: {g_display_A.shape}")
-                cv2.waitKey(10)
-                time.sleep(0.1)
-            else:
-                print(f"WA: No disp B")
-            time.sleep(0.05)
+            if g_display_state == "init":
+                bg = create_bg("INIT")
+                cv2.imshow("init", bg)
+                cv2.waitKey(1)
+                cv2.setWindowProperty("init", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                time.sleep(0.02)
+            elif g_display_state == "idle":
+                destroy_window("measuring")
+                destroy_window("init")
+                if g_display_result is not None:
+                    L, theta = g_display_result.get("L", 0), g_display_result.get("theta", 0)
+                    if L is None:
+                        L = 0
+                    if theta is None:
+                        theta = 0
+                    res_img = np.zeros((180, 768, 3), dtype=np.uint8)
+                    cv2.putText(res_img, f"L: {L:.3f}m", (20, 48), g_display_font, 2, (255, 255, 0), 2)
+                    cv2.putText(res_img, f"theta: {theta:.1f}", (20, 120), g_display_font, 2, (255, 255, 0), 2)
+                    cv2.putText(res_img, f"DONE", (400, 84), g_display_font, 3, (0, 255, 0), 3)
+                    cv2.imshow("result", res_img)
+                    cv2.waitKey(1)
+                if g_display_A is not None:
+                    A = g_display_A.copy()
+                    cv2.putText(A, "A", (20, 100), g_display_font, 3, (127, 0, 127), 3)
+                    cv2.imshow("A", A)
+                    cv2.waitKey(1)
+                    time.sleep(0.02)
+                else:
+                    # print(f"WA: No disp A")
+                    pass
+                if g_display_B is not None:
+                    B = g_display_B.copy()
+                    cv2.putText(B, "B", (20, 100), g_display_font, 3, (127, 0, 127), 3)
+                    cv2.imshow("B", B)
+                    cv2.waitKey(1)
+                    time.sleep(0.02)
+                else:
+                    # print(f"WA: No disp B")
+                    pass
+            elif g_display_state == 'measuring':
+                bg = create_bg("TESTING")
+                cv2.imshow("measuring", bg)
+                cv2.waitKey(1)
+                cv2.setWindowProperty("measuring", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            time.sleep(0.02)
         except Exception as e:
             print(f"display loop: {e}")
 
