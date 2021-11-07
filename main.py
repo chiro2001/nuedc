@@ -579,6 +579,11 @@ def start_rpc_server():
         print(f"\n================ RESULT =================\n")
         print(f"{text_}")
 
+        if text_ is None:
+            return
+
+        os.system("aplay Ring06.wav &")
+
         # threading.Thread(target=process_result, args=(text_,), daemon=True).start()
         global g_display_result
         g_display_result = json.loads(text_)
