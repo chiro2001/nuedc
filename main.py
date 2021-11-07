@@ -154,6 +154,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
     expanded = get_expanded_frame(resized)
     cv2.imshow("frame", expanded)
     cv2.setWindowProperty("frame", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.waitKey(1)
     now = time.time()
     time_delta = now - last_time
     print(
@@ -164,9 +165,9 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
         fps_time = fps_time[1:]
     last_time = now
 
-    key = chr(cv2.waitKey(1) & 0xFF)
-    if key == 'q' and on_quit is not None:
-        on_quit()
+    # key = chr(cv2.waitKey(1) & 0xFF)
+    # if key == 'q' and on_quit is not None:
+    #     on_quit()
 
 
 Ls = []
@@ -270,10 +271,6 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
             time.sleep(0.5)
             print(f"======== WA : No C Client, wait... ========")
             return
-        result = {
-            'L': float(0.1),
-            'theta': float(50.9)
-        }
         if server_display is not None:
             sent = False
             time.sleep(0.5)

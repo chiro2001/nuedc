@@ -48,6 +48,6 @@ def calc_range():
     ans = right - left
     ans = max(ans, 0)
     # print(f"[{right} - {left} = {ans}]sums: {sums.shape}")
-    cv2.imshow("superposition", image)
-    cv2.waitKey(1)
+    # cv2.imshow("superposition", image)
+    # cv2.waitKey(1)
     return ans
