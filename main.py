@@ -171,8 +171,8 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
 
 
 Ls = []
-Ts_offset = 2
-Ls_count = 3
+Ts_offset = 3
+Ls_count = 2
 L_delta = 5.37 / 100
 D_delta = 40
 L_result = None
@@ -208,17 +208,17 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             print(f"L = {L}")
             Ls.append(L)
             if len(Ls) >= Ls_count:
-                # del some
-                max_d = 0
-                select_index = None
-                ave_raw = float(np.sum(np.array(Ls)) / len(Ls))
-                for i in range(len(Ls)):
-                    m = abs(ave_raw - Ls[i])
-                    if m > max_d:
-                        select_index = i
-                        print(f"del: [{i}]")
-                if select_index is not None:
-                    Ls = [Ls[i] for i in range(len(Ls)) if i != select_index]
+                # # del some
+                # max_d = 0
+                # select_index = None
+                # ave_raw = float(np.sum(np.array(Ls)) / len(Ls))
+                # for i in range(len(Ls)):
+                #     m = abs(ave_raw - Ls[i])
+                #     if m > max_d:
+                #         select_index = i
+                #         print(f"del: [{i}]")
+                # if select_index is not None:
+                #     Ls = [Ls[i] for i in range(len(Ls)) if i != select_index]
                 print(f"Ls = {Ls}")
                 ave = np.sum(np.array(Ls)) / len(Ls)
                 global L_result
