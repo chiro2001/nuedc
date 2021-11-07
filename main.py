@@ -172,7 +172,7 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
 
 Ls = []
 Ts_offset = 2
-Ls_count = 2
+Ls_count = 3
 L_delta = 5.37 / 100
 D_delta = 40
 L_result = None
@@ -208,6 +208,18 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             print(f"L = {L}")
             Ls.append(L)
             if len(Ls) >= Ls_count:
+                # del some
+                max_d = 0
+                select_index = None
+                ave_raw = float(np.sum(np.array(Ls)) / len(Ls))
+                for i in range(len(Ls)):
+                    m = abs(ave_raw - Ls[i])
+                    if m > max_d:
+                        select_index = i
+                        print(f"del: [{i}]")
+                if select_index is not None:
+                    Ls = [Ls[i] for i in range(len(Ls)) if i != select_index]
+                print(f"Ls = {Ls}")
                 ave = np.sum(np.array(Ls)) / len(Ls)
                 global L_result
                 L_result = float(ave)
@@ -313,7 +325,8 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
         boxed = get_enhanced_frame(boxed, alpha=4, beta=0)
-        cv2.imshow("boxed", boxed)
+        boxed_expanded = get_expanded_frame(boxed)
+        cv2.imshow("boxed", boxed_expanded)
         cv2.setWindowProperty("boxed", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         cv2.waitKey(1)
         if is_master:
