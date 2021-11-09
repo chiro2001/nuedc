@@ -19,16 +19,22 @@ from xmlrpc.server import SimpleXMLRPCRequestHandler
 
 import xmlrpc.client
 
+# 全局变量
+
+# 计算fps用
 last_frame = None
 last_time = time.time()
 last_timestamp = None
 fps_time = []
 fps_count = 60
 
+# 框红框位置，滤波用
 outline_rounds = []
 outline_count = 2
 
+# 测量角度结果
 D_res = None
+# 测量角度至少需要多少帧
 D_res_count = 20
 
 states = {
@@ -36,20 +42,91 @@ states = {
     "big": 1,
     "small": 2
 }
+# 当前系统状态
 state = "init"
 
+# 测量长度结果数据记录
+Ls = []
+# 抛弃多少个开头的测量结果
+Ts_offset = 3
+# 计算多少个平均值
+Ls_count = 2
+# 长度调整系数（单位：m）
+L_delta = 5.37 / 100
+# 计算角度的像素宽度调整（激光笔宽度）
+D_delta = 40
+# 求得结果
+L_result = None
+# 结果排名（未用到）
+L_rank = 0
+
+# 上一个框框
+last_outline = None
+
+# 全局帧（用来图传）
 g_frame = None
+# 接收到B的图像
 g_slave_frame = None
+# C接收到A、B的图像
 g_display_A = None
 g_display_B = None
 
+# 状态切换是否完成
+switched = False
 
+# 系统闲置状态开始时间
+idle_start = None
+# 系统闲置状态总时间（未用）
+idle_time = 5
+
+# 是否等待input输入
+blocked = True
+# 按键输入线程
+th_wait_key = None
+
+# 指定主机
+master = os.environ.get("MASTER", "rpi01")
+# 指定终端
+display = os.environ.get("DISP", "rpi00")
+# 用hostname定位身份
+myself = os.popen("hostname").readline().replace("\n", "")
+is_master = master == myself
+is_display = display == myself
+if is_master:
+    print(f"Master running!")
+else:
+    print(f"Slave running!")
+
+# 终端显示结果用
+g_display_result = None
+g_display_state = "init"
+# 终端屏幕覆盖层大小（屏幕大小）
+g_display_size = (1920, 1080)
+g_display_font = cv2.FONT_HERSHEY_SIMPLEX
+
+# A从B拿到的数据
+slave_D_res = None
+slave_L_res = None
+slave_L_rank = None
+
+# RPC调用服务器（B和C）
+server = None
+server_display = None
+
+# 等待长度和角度数据的限制时间
+timeout_L = 20
+timeout_D = 20
+
+
+# 得到增强了对比度的图像
 def get_enhanced_frame(frame, alpha=1.3, beta=30):
     if frame is None:
         return None
+    # TODO: fix uint8 溢出
     return np.uint8(np.clip((alpha * frame + beta), 0, 255))
 
 
+# 得到缩小的图像
 def get_resized_frame(frame):
     if frame is None:
         return None
@@ -59,6 +136,7 @@ def get_resized_frame(frame):
     return resized
 
 
+# 得到放大图像
 def get_expanded_frame(frame):
     if frame is None:
         return None
@@ -68,9 +146,7 @@ def get_expanded_frame(frame):
     return resized
 
 
-last_outline = None
-
-
+# 框柱运动物体
 def box_frame(frame):
     global last_frame, last_time, fps_time, last_timestamp, outline_rounds
     resized_raw = get_resized_frame(frame)
@@ -139,6 +215,7 @@ def box_frame(frame):
     return resized
 
 
+# 测量角度时候的on_frame
 def state_big(frame: np.ndarray, on_quit=None, info=None):
     global last_frame, last_time, fps_time, last_timestamp, outline_rounds
     add_frame(frame)
@@ -165,24 +242,13 @@ def state_big(frame: np.ndarray, on_quit=None, info=None):
         fps_time = fps_time[1:]
     last_time = now
 
-    # key = chr(cv2.waitKey(1) & 0xFF)
-    # if key == 'q' and on_quit is not None:
-    #     on_quit()
 
-
-Ls = []
-Ts_offset = 3
-Ls_count = 2
-L_delta = 5.37 / 100
-D_delta = 40
-L_result = None
-L_rank = 0
-
-
+# RPC参数
 class RequestHandler(SimpleXMLRPCRequestHandler):
     rpc_paths = ('/RPC2', '/RPC3')
 
 
+# 调用改变系统状态
 def remote_set_state(s: str):
     global state, switched
     state = s
@@ -192,6 +258,7 @@ def remote_set_state(s: str):
         to_idle_state()
 
 
+# 测量周期的时候的on_frame
 def state_small(frame: np.ndarray, on_quit=None, info=None):
     global Ts_offset, Ls, switched, state
     res = calc_time(frame, info)
@@ -208,7 +275,7 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
             print(f"L = {L}")
             Ls.append(L)
             if len(Ls) >= Ls_count:
-                # # del some
+                # # 删除一个不符合的数据
                 # max_d = 0
                 # select_index = None
                 # ave_raw = float(np.sum(np.array(Ls)) / len(Ls))
@@ -230,15 +297,7 @@ def state_small(frame: np.ndarray, on_quit=None, info=None):
                 Ls = Ls[1:]
 
 
-switched = False
-
-idle_start = None
-idle_time = 5
-
-blocked = True
-th_wait_key = None
-
-
+# 单独开线程来等待按键
 def wait_key(words: str = "Press Key to continue..."):
     global blocked
     blocked = True
@@ -248,6 +307,8 @@ def wait_key(words: str = "Press Key to continue..."):
     blocked = False
 
 
+# 切换到闲置模式（尝试恢复系统状态）
+# TODO: fix 回到 idle 则摄像头配置无法切换
 def to_idle_state():
     print(f"[ to_idle_state() ]")
     global state, idle_start
@@ -272,12 +333,12 @@ def to_idle_state():
         th_wait_key.start()
 
 
+# 帧到来事件
 def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None):
     global switched, state, idle_start
-    # print(f" [ STATE : {state} ]")
     if state == 'init':
+        # 初始化状态，仅仅一帧
         print(f" [ STATE : {state} ]")
-        # cv2.destroyAllWindows()
 
         if is_master:
             if server_display is None:
@@ -306,6 +367,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                 time.sleep(2)
         time.sleep(1)
         update_buf(cam)
+        # 更新测量角度的时候的背景图，最好拿掉激光笔再存
         set_raw_image(frame)
         to_idle_state()
         if is_master:
@@ -322,6 +384,7 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
             else:
                 print(f"======== WA : No C Client ========")
     elif state == "idle":
+        # 闲置模式
         global g_slave_frame, g_frame
         boxed = box_frame(frame)
         boxed = get_enhanced_frame(boxed, alpha=4, beta=0)
@@ -348,14 +411,13 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
                 time.sleep(0.1)
 
             if not blocked:
-                # state = "small"
                 server.remote_set_state("small")
                 remote_set_state("small")
                 print(f"======= L =======")
                 print(f"Measuring L...")
     elif state == 'big':
+        # 测量角度模式
         if not switched:
-            # cv2.destroyAllWindows()
             time.sleep(1)
             ok = False
             while not ok:
@@ -368,8 +430,8 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
             switched = True
         state_big(frame, on_quit, info)
     elif state == 'small':
+        # 测量长度模式
         if not switched:
-            # cv2.destroyAllWindows()
             time.sleep(1)
             ok = False
             while not ok:
@@ -385,28 +447,11 @@ def on_frame(frame: np.ndarray, on_quit=None, info=None, cam=None, on_pause=None
         sys.exit(0)
 
 
-master = os.environ.get("MASTER", "rpi01")
-display = os.environ.get("DISP", "rpi00")
-myself = os.popen("hostname").readline().replace("\n", "")
-is_master = master == myself
-is_display = display == myself
-if is_master:
-    print(f"Master running!")
-else:
-    print(f"Slave running!")
-test_number = int(os.environ.get("TASK", "1"))
-
-slave_D_res = None
-slave_L_res = None
-slave_L_rank = None
-
-server = None
-server_display = None
-
-
-def master_back_thread():
+# 主线程
+def master_thread():
     global slave_L_res, slave_D_res, slave_L_rank
     global state, switched
+    # B 必须已经启动
     while server is None:
         time.sleep(0.2)
     server_ok = False
@@ -426,8 +471,6 @@ def master_back_thread():
                 except Exception as e:
                     print(f"disp result err: {e}")
                     time.sleep(0.4)
-            timeout_L = 20
-            timeout_D = 20
             time_L = 0.0
             time_D = 0.0
             time_d = 0.4
@@ -465,6 +508,7 @@ def master_back_thread():
                 print(f"L: use slave")
             if final_result_L is None:
                 if L_rank <= slave_L_rank:
+                    # 更倾向用master的（
                     final_result_L = L_result
                     print(f"L: use master")
                 else:
@@ -515,9 +559,6 @@ def master_back_thread():
             except Exception as e:
                 print(f"set to remote idle error: {e}")
             remote_set_state("idle")
-            # state = 'idle'
-            # switched = False
-            # to_idle_state()
             time.sleep(3)
 
             print(f"\n==================== DONE ==================\n")
@@ -525,6 +566,7 @@ def master_back_thread():
                 'L': float(final_result_L if final_result_L is not None else 0),
                 'theta': float(Theta if Theta is not None else 0)
             }
+            # 这里保证数据传到C
             if server_display is not None:
                 sent = False
                 while not sent:
@@ -538,12 +580,12 @@ def master_back_thread():
             time.sleep(3)
 
 
+# PRC调用中不能直接传图像，转成base64再传
 def parse_b64_img(b64: str):
     if b64 is None:
         return None
     io_buf = io.BytesIO(base64.b64decode(b64))
     decode_img = cv2.imdecode(np.frombuffer(io_buf.getbuffer(), np.uint8), -1)
-    # decode_img = get_expanded_frame(decode_img)
     return decode_img
 
 
@@ -555,11 +597,14 @@ def encode_b64_img(img):
     return b64
 
 
+# 打开PRC服务器（B、C）
 def start_rpc_server():
+    global server
     server = SimpleXMLRPCServer(("0.0.0.0", 8000), requestHandler=RequestHandler, allow_none=True)
     server.register_introspection_functions()
     server.register_function(remote_set_state)
 
+    # ping-pong
     @server.register_function
     def test():
         return 'OK'
@@ -576,6 +621,7 @@ def start_rpc_server():
     def get_D_res():
         return D_res
 
+    # 勿用
     @server.register_function
     def exit_slave():
         sys.exit(0)
@@ -594,10 +640,9 @@ def start_rpc_server():
 
         if text_ is None:
             return
-
+        # 完成后由C播放提示音
         os.system("aplay Ring06.wav &")
 
-        # threading.Thread(target=process_result, args=(text_,), daemon=True).start()
         global g_display_result
         g_display_result = json.loads(text_)
 
@@ -627,21 +672,6 @@ def start_rpc_server():
         g_display_state = s
 
     server.serve_forever()
-
-
-def wait_key_loop():
-    while True:
-        try:
-            # cv2.waitKey(10)
-            time.sleep(0.1)
-        except Exception as e:
-            print(f"wait_key: {e}")
-
-
-g_display_result = None
-g_display_state = "init"
-g_display_size = (1920, 1080)
-g_display_font = cv2.FONT_HERSHEY_SIMPLEX
 
 
 def destroy_window(name: str):
@@ -709,10 +739,11 @@ def display_loop():
             print(f"display loop: {e}")
 
 
+# 主程序
 def main():
     global server
     if is_display:
-        threading.Thread(target=wait_key_loop, daemon=True).start()
+        # 如果是C终端，只等待RPC调用
         threading.Thread(target=display_loop, daemon=True).start()
         start_rpc_server()
     else:
@@ -727,55 +758,55 @@ def main():
             "192.168.137.232",
             '192.168.137.230'
         ]
-        if test_number == 1 or test_number == 2:
-            device_list = find_cameras()
-            mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
-            ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
-                                         ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16),
-                                         ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8),
-                                         (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff))
-            if ip_addr == camera_target[0]:
-                print(f"using: cam0{camera_id} {camera_target[camera_id]}")
-                start_capture(device_list, camera_id, on_frame, to_exit=False)
-            else:
-                print(f"using: cam0{camera_id} {camera_target[camera_id]}")
-                start_capture(device_list, 1 - camera_id, on_frame, to_exit=False)
-            if not is_master:
-                rpc_server_url = f"http://{host_ips[camera_id]}:8000"
-                print(f"rpc server will run on: {rpc_server_url}")
-                start_rpc_server()
-            else:
-                if not is_master:
-                    pass
-                else:
-                    rpc_display_url = f"http://{host_ips[2]}:8000"
-                    print(f"check if display started")
-                    global server_display
-                    try:
-                        server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
-                        server_display.test()
-                    except Exception as e:
-                        print(f"{e}")
-                        server_display = None
-                    if server_display is None:
-                        print(f"No C display detected!")
-                    rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
-                    print(f"wait slave start...")
-                    slave_ok = False
-                    while not slave_ok:
-                        try:
-                            server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
-                            server.test()
-                            slave_ok = True
-                        except Exception as e:
-                            print(f"{e}")
-                            time.sleep(0.5)
-
-                    print(f"rpc server at: {rpc_server_url}")
-                    th = threading.Thread(target=master_back_thread, daemon=True)
-                    th.start()
-                    while True:
-                        time.sleep(0.1)
+        device_list = find_cameras()
+        mvcc_dev_info = cast(device_list.pDeviceInfo[0], POINTER(MV_CC_DEVICE_INFO)).contents
+        ip_addr = "%d.%d.%d.%d\n" % (((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0xff000000) >> 24),
+                                     ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x00ff0000) >> 16),
+                                     ((mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x0000ff00) >> 8),
+                                     (mvcc_dev_info.SpecialInfo.stGigEInfo.nCurrentIp & 0x000000ff))
+        if ip_addr == camera_target[0]:
+            print(f"using: cam0{camera_id} {camera_target[camera_id]}")
+            start_capture(device_list, camera_id, on_frame, to_exit=False)
+        else:
+            print(f"using: cam0{camera_id} {camera_target[camera_id]}")
+            start_capture(device_list, 1 - camera_id, on_frame, to_exit=False)
+        if not is_master:
+            # B端，初始化完成，开始 on_frame，然后等待RPC调用
+            rpc_server_url = f"http://{host_ips[camera_id]}:8000"
+            print(f"rpc server will run on: {rpc_server_url}")
+            start_rpc_server()
+        else:
+            rpc_display_url = f"http://{host_ips[2]}:8000"
+            print(f"check if display started")
+            # 如果C不启动则不连接终端
+            # 所以需要先启动C终端
+            global server_display
+            try:
+                server_display = xmlrpc.client.ServerProxy(rpc_display_url, allow_none=True)
+                server_display.test()
+            except Exception as e:
+                print(f"{e}")
+                server_display = None
+            if server_display is None:
+                print(f"No C display detected!")
+            # 等待直到B节点启动完成
+            rpc_server_url = f"http://{host_ips[1 - camera_id]}:8000"
+            print(f"wait slave start...")
+            slave_ok = False
+            while not slave_ok:
+                try:
+                    server = xmlrpc.client.ServerProxy(rpc_server_url, allow_none=True)
+                    server.test()
+                    slave_ok = True
+                except Exception as e:
+                    print(f"{e}")
+                    time.sleep(0.5)
+            print(f"rpc server at: {rpc_server_url}")
+            # 启动A(Master)进程
+            th = threading.Thread(target=master_thread, daemon=True)
+            th.start()
+            while True:
+                time.sleep(0.1)
 
 
 if __name__ == '__main__':

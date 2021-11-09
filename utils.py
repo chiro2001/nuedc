@@ -1,8 +1,11 @@
 import time
+
+
 # last = 0
 
 
 def get_timestamp_ms(info):
+    # 摄像头的硬件计时不准确，吧不知道为什么
     # global last
     # return ((info.nHostTimeStamp & 0xFFFFC000) >> 14) * 1000 / (2 ** 13)
     # print(
@@ -18,4 +21,5 @@ def get_timestamp_ms(info):
     # last = res
     # return res
 
+    # 用软件计时会产生误差和抖动，务必小心
     return time.time() * 1000

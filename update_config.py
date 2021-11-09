@@ -1,5 +1,7 @@
 # -- coding: utf-8 --
 
+# 更新摄像头参数
+
 import time
 import sys
 import threading

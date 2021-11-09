@@ -22,6 +22,9 @@ temp = None
 brightness_last = None
 
 
+# 按状态机理解
+
+
 def calc_brightness(crop, info):
     brightness = np.sum(crop) / crop.size
     # print(f"brightness = {brightness}")
